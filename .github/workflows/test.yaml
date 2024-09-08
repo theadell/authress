@@ -1,0 +1,29 @@
+name: test workflow
+
+on:
+  push:
+    branches:
+      - main
+  pull_request: 
+    branches:
+      - main
+  workflow_dispatch: 
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults: 
+      run:
+        shell: bash
+        working-directory: ./go-services
+    steps:
+      - uses: actions/checkout@v4
+      - name: setup Go 1.23
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - name: Install dependencies
+        run: |
+          go mod download
+      - name: test 
+        run: go test ./... -v -cover
+          
