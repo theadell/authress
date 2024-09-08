@@ -28,8 +28,8 @@ func (m *OAuth2ServerMetadata) Endpoint() oauth2.Endpoint {
 	}
 }
 
-func discoverOAuth2ServerMetadata(discoveryUrl string) (*OAuth2ServerMetadata, map[string]*rsa.PublicKey, error) {
-	resp, err := http.Get(discoveryUrl)
+func discoverOAuth2ServerMetadata(client *http.Client, discoveryUrl string) (*OAuth2ServerMetadata, map[string]*rsa.PublicKey, error) {
+	resp, err := client.Get(discoveryUrl)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -44,7 +44,7 @@ func discoverOAuth2ServerMetadata(discoveryUrl string) (*OAuth2ServerMetadata, m
 		return nil, nil, fmt.Errorf("failed to decode server metadata %w", err)
 	}
 
-	jwks, err := internal.FetchJWKS(metadata.JWKURI)
+	jwks, err := internal.FetchJWKS(client, metadata.JWKURI)
 	if err != nil {
 		return nil, nil, err
 	}

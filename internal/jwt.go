@@ -15,89 +15,57 @@ type JWTHeader struct {
 	Alg string `json:"alg"`
 	Kid string `json:"kid"`
 }
-type JWTPayload struct {
-	Exp   int64          `json:"exp"`
-	Iat   int64          `json:"iat"`
-	Iss   string         `json:"iss"`
-	Nonce string         `json:"nonce"`
-	Acr   string         `json:"acr"`
-	Amr   string         `json:"amr"`
-	Azp   string         `json:"azp"`
-	Aud   []string       `json:"aud"`
-	Extra map[string]any `json:"-"`
+
+type Token struct {
+	Header JWTHeader
+	Claims map[string]any
+	Sig    string
+	Iss    string
+	Exp    int64
+	Nbf    int64
+	Aud    []string
 }
 
-func (p *JWTPayload) UnmarshalJSON(data []byte) error {
+func (t *Token) GetClaim(key string) (any, bool) {
+	value, ok := t.Claims[key]
+	return value, ok
+}
 
-	var temp map[string]any
-	if err := json.Unmarshal(data, &temp); err != nil {
-		return err
+func (t *Token) GetInt64Claim(key string) (int64, bool) {
+	if val, ok := t.Claims[key].(float64); ok {
+		return int64(val), true
+	}
+	return 0, false
+}
+
+func (t *Token) GetStringClaim(key string) (string, bool) {
+	if val, ok := t.Claims[key].(string); ok {
+		return val, true
+	}
+	return "", false
+}
+
+func (t *Token) GetAudience() ([]string, bool) {
+	audClaim, ok := t.Claims["aud"]
+	if !ok {
+		return nil, false
 	}
 
-	if exp, ok := temp["exp"].(float64); ok {
-		p.Exp = int64(exp)
-	}
-	if iat, ok := temp["iat"].(float64); ok {
-		p.Iat = int64(iat)
-	}
-	if iss, ok := temp["iss"].(string); ok {
-		p.Iss = iss
-	}
-	if nonce, ok := temp["nonce"].(string); ok {
-		p.Nonce = nonce
-	}
-	if acr, ok := temp["acr"].(string); ok {
-		p.Acr = acr
-	}
-	if amr, ok := temp["amr"].(string); ok {
-		p.Amr = amr
-	}
-	if azp, ok := temp["azp"].(string); ok {
-		p.Azp = azp
-	}
-	if aud, ok := temp["aud"].(string); ok {
-		p.Aud = []string{aud}
-	} else if audSlice, ok := temp["aud"].([]any); ok {
-		for _, v := range audSlice {
-			if audStr, ok := v.(string); ok {
-				p.Aud = append(p.Aud, audStr)
+	// Handle the "aud" claim, which can be a string or a slice of strings
+	switch v := audClaim.(type) {
+	case string:
+		return []string{v}, true
+	case []any: // In case it's a slice of strings
+		audList := make([]string, len(v))
+		for i, audVal := range v {
+			if audStr, ok := audVal.(string); ok {
+				audList[i] = audStr
 			}
 		}
+		return audList, true
+	default:
+		return nil, false
 	}
-
-	p.Extra = temp
-
-	return nil
-}
-
-func (p *JWTPayload) GetClaim(key string) any {
-	if value, ok := p.Extra[key]; ok {
-		return value
-	}
-	return nil
-}
-func (p *JWTPayload) GetStringClaim(key string) string {
-	value := p.GetClaim(key)
-	if strValue, ok := value.(string); ok {
-		return strValue
-	}
-	return ""
-}
-func (p *JWTPayload) GetIntClaim(key string) int {
-	value := p.GetClaim(key)
-	if floatValue, ok := value.(float64); ok {
-		return int(floatValue)
-	}
-	return 0
-}
-
-func (p *JWTPayload) GetStructClaim(key string, out any) error {
-	value := p.GetClaim(key)
-	if claimMap, ok := value.(map[string]interface{}); ok {
-		claimJSON, _ := json.Marshal(claimMap)
-		return json.Unmarshal(claimJSON, out)
-	}
-	return fmt.Errorf("authress: claim not found or not a valid struct")
 }
 
 func Split(token string) (string, string, string, error) {
@@ -108,46 +76,80 @@ func Split(token string) (string, string, string, error) {
 	return parts[0], parts[1], parts[2], nil
 }
 
-func decodeJWTPart[T JWTHeader | JWTPayload](encodedPart string) (*T, error) {
-	// Base64 URL-decode the part (either header or payload)
+func decodeJWTPart(encodedPart string, out any) error {
+	// Base64 URL-decode the part
 	partBytes, err := base64.RawURLEncoding.DecodeString(encodedPart)
 	if err != nil {
-		return nil, errors.New("failed to decode part: " + err.Error())
+		return fmt.Errorf("failed to decode part: %w", err) // Wrapping the error for context without string concatenation
 	}
 
-	// Unmarshal the decoded bytes into the provided type T (JWTHeader, JWTPayload, etc.)
-	var part T
-	if err := json.Unmarshal(partBytes, &part); err != nil {
-		return nil, errors.New("failed to unmarshal part: " + err.Error())
+	// Unmarshal the decoded bytes into the provided type (out)
+	if err := json.Unmarshal(partBytes, &out); err != nil {
+		return fmt.Errorf("failed to unmarshal part: %w", err)
 	}
 
-	return &part, nil
+	return nil
 }
 
-func DecodeJWT(token string) (*JWTHeader, *JWTPayload, error) {
-	// Step 1: Split the JWT into header, payload, and signature
-	encodedHeader, encodedPayload, _, err := Split(token)
+func DecodeJWT(token string) (*Token, error) {
+	encodedHeader, encodedPayload, sig, err := Split(token)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	// Step 2: Decode the header
-	header, err := decodeJWTPart[JWTHeader](encodedHeader)
-	if err != nil {
-		return nil, nil, errors.New("failed to decode JWT header: " + err.Error())
+	var header JWTHeader
+	if err := decodeJWTPart(encodedHeader, &header); err != nil {
+		return nil, fmt.Errorf("failed to decode JWT header: %w", err)
 	}
 
-	// Step 3: Decode the payload
-	payload, err := decodeJWTPart[JWTPayload](encodedPayload)
-	if err != nil {
-		return nil, nil, errors.New("failed to decode JWT payload: " + err.Error())
+	// Decode the claims
+	var claims map[string]any
+	if err := decodeJWTPart(encodedPayload, &claims); err != nil {
+		return nil, fmt.Errorf("failed to decode JWT claims: %w", err)
 	}
 
-	// Return both header and payload
-	return header, payload, nil
+	var issuer string
+	if iss, ok := claims["iss"].(string); ok {
+		issuer = iss
+	}
+
+	var expiration int64
+	if exp, ok := claims["exp"].(float64); ok {
+		expiration = int64(exp)
+	}
+
+	var notBefore int64
+	if nbf, ok := claims["nbf"].(float64); ok {
+		notBefore = int64(nbf)
+	}
+
+	var audience []string
+	if audClaim, ok := claims["aud"]; ok {
+		switch v := audClaim.(type) {
+		case string:
+			audience = []string{v}
+		case []interface{}:
+			for _, audVal := range v {
+				if audStr, ok := audVal.(string); ok {
+					audience = append(audience, audStr)
+				}
+			}
+		}
+	}
+
+	// Return the Token struct
+	return &Token{
+		Header: header,
+		Claims: claims,
+		Sig:    sig,
+		Iss:    issuer,
+		Exp:    expiration,
+		Nbf:    notBefore,
+		Aud:    audience,
+	}, nil
 }
 
-func ValidateJWT(tokenString string, keys map[string]*rsa.PublicKey, issuer string, validateAud bool, aud []string) (*JWTHeader, *JWTPayload, error) {
+func ValidateJWT(tokenString string, keys map[string]*rsa.PublicKey, issuer string, validateAud bool, aud []string) (*Token, error) {
 
 	// JWT Validation Steps (Based on RFC 7519):
 	// 1. Split the JWT into its three components: header, payload, and signature.
@@ -174,66 +176,57 @@ func ValidateJWT(tokenString string, keys map[string]*rsa.PublicKey, issuer stri
 	// Step 1: Split the JWT into header, payload, and signature
 	header, payload, signature, err := Split(tokenString)
 	if err != nil {
-		return nil, nil, validationError("parsing", "malformatted token", err.Error())
+		return nil, validationError("parsing", "malformatted token", err.Error())
 	}
 
 	// Step 2: Decode the JWT
-	jwtHeader, claims, err := DecodeJWT(tokenString)
+	t, err := DecodeJWT(tokenString)
 	if err != nil {
-		return nil, nil, validationError("decoding", "malformatted token", err.Error())
+		return nil, validationError("decoding", "malformatted token", err.Error())
 	}
 
 	data := header + "." + payload
 
 	// Step 3: Signature verification
-	if jwtHeader.Kid != "" {
-		key, ok := keys[jwtHeader.Kid]
+	if t.Header.Kid != "" {
+		key, ok := keys[t.Header.Kid]
 		if !ok {
-			return nil, nil, validationError("signature", "no matching key found for kid", jwtHeader.Kid)
+			return nil, validationError("signature", "no matching key found for kid", t.Header.Kid)
 		}
-		if err := VerifyRSASignature(data, signature, jwtHeader.Alg, key); err != nil {
-			return nil, nil, validationError("signature", "signature verification failed: invalid signature", err.Error())
+		if err := VerifyRSASignature(data, signature, t.Header.Alg, key); err != nil {
+			return nil, validationError("signature", "signature verification failed: invalid signature", err.Error())
 		}
 	} else {
-		for _, pubKey := range keys {
-			err = VerifyRSASignature(data, jwtHeader.Alg, signature, pubKey)
-			if err == nil {
-				break
-			}
-		}
-		if err != nil {
-			return nil, nil, validationError("signature", "no matching key found for kid", err.Error())
-		}
+		return nil, validationError("signature", "no matching key found for kid", "`kid` missing on token header")
 	}
 
 	// Step 4: Validate claims
-	if claims.Iss != issuer {
-		return nil, nil, validationError("claims", "invalid issuer", fmt.Sprintf("expected %s, got %s", issuer, claims.Iss))
+	if t.Iss != issuer {
+		return nil, validationError("claims", "invalid issuer", fmt.Sprintf("expected %s, got %s", issuer, t.Iss))
 	}
 
-	if time.Now().Unix() > claims.Exp {
-		return nil, nil, validationError("claims", "token has expired", fmt.Sprintf("exp: %d, now: %d", claims.Exp, time.Now().Unix()))
+	if time.Now().Unix() > t.Exp {
+		return nil, validationError("claims", "token has expired", fmt.Sprintf("exp: %d, now: %d", t.Exp, time.Now().Unix()))
 	}
 
-	nbf := claims.GetIntClaim("nbf")
-	if nbf > 0 && time.Now().Unix() < int64(nbf) {
-		return nil, nil, validationError("claims", "token is not valid yet (nbf)", fmt.Sprintf("nbf: %d, now: %d", nbf, time.Now().Unix()))
+	if t.Nbf > 0 && time.Now().Unix() < t.Nbf {
+		return nil, validationError("claims", "token is not valid yet (nbf)", fmt.Sprintf("nbf: %d, now: %d", t.Nbf, time.Now().Unix()))
 	}
 
 	if validateAud {
 		validAud := false
-		for _, a := range claims.Aud {
+		for _, a := range t.Aud {
 			if slices.Contains(aud, a) {
 				validAud = true
 				break
 			}
 		}
 		if !validAud {
-			return nil, nil, validationError("claims", "invalid audience", "aud claim did not match expected audience/s")
+			return nil, validationError("claims", "invalid audience", "aud claim did not match expected audience/s")
 		}
 	}
 
-	return jwtHeader, claims, nil
+	return t, nil
 }
 
 type JWTValidationError struct {

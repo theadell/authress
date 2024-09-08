@@ -18,21 +18,21 @@ type Validator struct {
 
 // Parse parses and returns the JWT Token or error if the token is not strucrually valid JWT
 func (v *Validator) Parse(tokenString string) (*Token, error) {
-	h, p, err := internal.DecodeJWT(tokenString)
+	t, err := internal.DecodeJWT(tokenString)
 	if err != nil {
 		return nil, err
 	}
-	return &Token{Raw: tokenString, header: h, payload: p}, nil
+	return &Token{Raw: tokenString, t: t}, nil
 }
 
 // ValidateJWT checks if the given JWT is valid by verifying its signature and standard claims.
 // Returns a Token object on success or an error if validation fails.
 func (v *Validator) ValidateJWT(tokenString string) (*Token, error) {
-	header, payload, err := internal.ValidateJWT(tokenString, v.config.keys, v.config.AuthServerMetadata.Issuer, v.config.ValidateAudience, v.config.Audience)
+	t, err := internal.ValidateJWT(tokenString, v.config.keys, v.config.AuthServerMetadata.Issuer, v.config.ValidateAudience, v.config.Audience)
 	if err != nil {
 		return nil, err
 	}
-	return &Token{Raw: tokenString, payload: payload, header: header}, nil
+	return &Token{Raw: tokenString, t: t}, nil
 }
 
 // IntrospectToken checks if the provided token is active by querying the introspection endpoint according to RFC 7662.
@@ -77,8 +77,10 @@ type Option func(*config)
 func NewValidator(options ...Option) (*Validator, error) {
 	validator := &Validator{
 		config: &config{
-			HTTPClient: defaultHTTPClient(),
-			keys:       make(map[string]*rsa.PublicKey),
+			HTTPClient: &http.Client{
+				Timeout: 10 * time.Second,
+			},
+			keys: make(map[string]*rsa.PublicKey),
 		},
 	}
 
@@ -91,7 +93,7 @@ func NewValidator(options ...Option) (*Validator, error) {
 	}
 
 	if validator.config.AuthServerDiscoveryURL != "" && validator.config.AuthServerMetadata == nil {
-		metadata, jwks, err := discoverOAuth2ServerMetadata(validator.config.AuthServerDiscoveryURL)
+		metadata, jwks, err := discoverOAuth2ServerMetadata(validator.config.HTTPClient, validator.config.AuthServerDiscoveryURL)
 		if err != nil {
 			return nil, fmt.Errorf("discovery error: failed to discover authorization server metadata: %w", err)
 		}
@@ -115,9 +117,9 @@ func WithHTTPClient(client *http.Client) Option {
 }
 
 // WithIntrospection enables token introspection.
-func WithIntrospection(enabled bool) Option {
+func WithIntrospection() Option {
 	return func(c *config) {
-		c.EnableIntrospection = enabled
+		c.EnableIntrospection = true
 	}
 }
 
@@ -147,11 +149,5 @@ func WithStaticAuthServerMetadata(metadata *OAuth2ServerMetadata, keys map[strin
 	return func(c *config) {
 		c.AuthServerMetadata = metadata
 		c.keys = keys
-	}
-}
-
-func defaultHTTPClient() *http.Client {
-	return &http.Client{
-		Timeout: 10 * time.Second,
 	}
 }

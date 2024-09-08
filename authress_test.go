@@ -74,7 +74,7 @@ func TestNewValidator(t *testing.T) {
 				WithStaticAuthServerMetadata(&OAuth2ServerMetadata{
 					Issuer: "my-iss",
 				}, keys),
-				WithIntrospection(true),
+				WithIntrospection(),
 			},
 			expectedErr: true,
 		},

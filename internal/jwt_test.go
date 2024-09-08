@@ -36,24 +36,24 @@ func TestRealJWTDecoding(t *testing.T) {
 		t.Fatalf("failed to create signed JWT: %v", err)
 	}
 
-	header, payload, err := DecodeJWT(tokenString)
+	token, err := DecodeJWT(tokenString)
 	if err != nil {
 		t.Fatalf("failed to decode JWT: %v", err)
 	}
 
-	if header.Alg != "RS256" {
-		t.Errorf("expected Alg to be RS256, got %s", header.Alg)
+	if token.Header.Alg != "RS256" {
+		t.Errorf("expected Alg to be RS256, got %s", token.Header.Alg)
 	}
-
-	if payload.Iss != "issuer" || payload.Nonce != "random-nonce" {
+	nonce, _ := token.GetStringClaim("nonce")
+	if token.Iss != "issuer" || nonce != "random-nonce" {
 		t.Errorf("decoded payload doesn't match the original values")
 	}
-	customClaim := payload.GetClaim("custom-claim")
-	if strClaim, ok := customClaim.(string); !ok || strClaim != "custom-value" {
+	customClaim, ok := token.GetStringClaim("custom-claim")
+	if !ok || customClaim != "custom-value" {
 		t.Errorf("expected custom-claim to be 'custom-value', got %v", customClaim)
 	}
 
-	anotherClaim := payload.GetIntClaim("another-claim")
+	anotherClaim, _ := token.GetInt64Claim("another-claim")
 	if anotherClaim != 12345 {
 		t.Errorf("expected another-claim to be 12345, got %v", anotherClaim)
 	}

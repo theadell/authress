@@ -53,8 +53,8 @@ func JWKToRSAPublicKey(jwk JWK) (*rsa.PublicKey, error) {
 	return rsaPubKey, nil
 }
 
-func FetchJWKS(jwksUri string) (*JWKS, error) {
-	resp, err := http.Get(jwksUri)
+func FetchJWKS(client *http.Client, jwksUri string) (*JWKS, error) {
+	resp, err := client.Get(jwksUri)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch JWKs with error %w", err)
 	}
