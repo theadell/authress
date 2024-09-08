@@ -29,8 +29,8 @@ import (
 	"net/http"
 
 	"github.com/justinas/alice"        
-	"github.com/theadell/authress" 
-    "github.com/theadell/authress/middleware" 
+	"github.com/theadell/authress"
+	"github.com/theadell/authress/middleware"
 )
 
 func main() {
