@@ -1,83 +1,47 @@
 package middleware
 
 import (
-	"context"
 	"net/http"
-	"strings"
 
 	"github.com/theadell/authress"
 )
 
-// ContextKey defines a custom type for context keys to avoid collisions.
-type ContextKey string
-
-// AuthContextKey is the key used to store authentication information in the request context.
-var AuthContextKey = ContextKey("x-authenticated")
-
-// TokenExtractor defines a function signature to extract a token from an HTTP request.
-type TokenExtractor func(r *http.Request) string
-
-// ContextModifier defines a function signature to modify the request context based on validation results.
-type ContextModifier func(ctx context.Context, token *authress.Token, valid bool) context.Context
-
-// BearerTokenExtractor extracts the token from the Authorization header (Bearer token).
-func BearerTokenExtractor(r *http.Request) string {
-	authHeader := r.Header.Get("Authorization")
-	if strings.HasPrefix(authHeader, "Bearer ") {
-		return strings.TrimPrefix(authHeader, "Bearer ")
-	}
-	return ""
-}
-
-// CookieTokenExtractor extracts a token from a cookie.
-func CookieTokenExtractor(r *http.Request, cookieName string) string {
-	cookie, err := r.Cookie(cookieName)
-	if err != nil {
-		return ""
-	}
-	return cookie.Value
-}
-
-// CustomHeaderTokenExtractor extracts a token from a custom HTTP header.
-func CustomHeaderTokenExtractor(r *http.Request, headerName string) string {
-	return r.Header.Get(headerName)
-}
-
-// defaultContextModifier sets "x-authenticated" to true or false in the request context.
-func defaultContextModifier(ctx context.Context, Token *authress.Token, valid bool) context.Context {
-	if valid {
-		ctx = context.WithValue(ctx, AuthContextKey, true)
-	} else {
-		ctx = context.WithValue(ctx, AuthContextKey, false)
-	}
-	return ctx
-}
-
-type MiddlewareOption func(*middlewareOptions)
-
-// middlewareOptions holds the token extraction and context modification logic.
-type middlewareOptions struct {
-	tokenExtractor  TokenExtractor
-	contextModifier ContextModifier
-}
-
-func WithTokenExtractor(extractor TokenExtractor) MiddlewareOption {
-	return func(opts *middlewareOptions) {
-		opts.tokenExtractor = extractor
-	}
-}
-
-// WithContextModifier allows customization of context modification in middleware.
-func WithContextModifier(modifier ContextModifier) MiddlewareOption {
-	return func(opts *middlewareOptions) {
-		opts.contextModifier = modifier
-	}
-}
-
-func Enforce(v *authress.Validator, opts ...MiddlewareOption) func(http.Handler) http.Handler {
+// RequireAuthJWT requires that a valid JWT is present in the request.
+// If the JWT is invalid or missing, the request is rejected with HTTP 401 Unauthorized.
+// If the JWT is valid, the parsed token is injected into the request context.
+//
+// The JSON Web Token is extracted from the `Authorization` header using the Bearer scheme by default.
+// You can customize the token extraction method using the [WithTokenExtractor] option, such as extracting the token from a cookie or a custom header.
+//
+// if the JWT is valid, the request context is modified to include the parsed token and a flag indicating whether the request is authenticated.
+// See the [WithContextModifier] option
+//
+// If the token is invalid or missing, the middleware responds with a 401 status and a default "Unauthorized" message.
+// The error response can be customized using [WithErrorResponder] option.
+//
+// Example Usage:
+//
+//	requireJWT := RequireAuthJWT(validator)
+//	http.Handle("/secure", requireJWT(http.HandlerFunc(secureHandler)))
+//	http.ListenAndServe(":8080", nil)
+//
+//	// Custom token extraction from a cookie and custom error response
+//	requireJWT := RequireAuthJWT(validator,
+//	    WithTokenExtractor(func(r *http.Request) string {
+//	        cookie, err := r.Cookie("token")
+//	        if err != nil {
+//	            return ""
+//	        }
+//	        return cookie.Value
+//	    }),
+//	    WithErrorResponder(func(w http.ResponseWriter, r *http.Request, err error) {
+//	        http.Error(w, "Custom unauthorized message", http.StatusUnauthorized)
+//	    }))
+func RequireAuthJWT(v *authress.Validator, opts ...MiddlewareOption) func(http.Handler) http.Handler {
 	mOpts := &middlewareOptions{
 		tokenExtractor:  BearerTokenExtractor,
 		contextModifier: defaultContextModifier,
+		errorResponder:  defaultErrorResponder,
 	}
 	for _, opt := range opts {
 		opt(mOpts)
@@ -86,19 +50,29 @@ func Enforce(v *authress.Validator, opts ...MiddlewareOption) func(http.Handler)
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 			token := mOpts.tokenExtractor(r)
-			_, err := v.ValidateJWT(token)
+			t, err := v.ValidateJWT(token)
 			if err != nil {
-				w.WriteHeader(http.StatusUnauthorized)
+				mOpts.errorResponder(w, r, err)
 				return
 			}
-			ctx := mOpts.contextModifier(r.Context(), nil, true)
-			r = r.WithContext(ctx)
+			r = r.WithContext(mOpts.contextModifier(r.Context(), t, true))
 			next.ServeHTTP(w, r)
 		})
 	}
 }
 
-func AuthenticateAndSetContext(v *authress.Validator, opts ...MiddlewareOption) func(http.Handler) http.Handler {
+// SetAuthContextJWT validates the JWT and injects the parsed token into the request context WITHOUT enforcing authentication.
+// The Authentication decision is left to downstream middleware / handlers.
+//
+// The JWT is extracted from the `Authorization` header using the Bearer scheme by default, See [WithTokenExtractor] option.
+// You can modify how the context is updated using the [WithContextModifier] option.
+//
+// Example Usage:
+//
+//	chain := alice.New(setAuthContextJWT, setAuthContextLDAP, enforceAuth, authorize).Then(http.HandlerFunc(secureHandler))
+//	http.Handle("/secure", chain)
+//	http.ListenAndServe(":8080", nil)
+func SetAuthContextJWT(v *authress.Validator, opts ...MiddlewareOption) func(http.Handler) http.Handler {
 	mOpts := &middlewareOptions{
 		tokenExtractor:  BearerTokenExtractor,
 		contextModifier: defaultContextModifier,
@@ -115,8 +89,82 @@ func AuthenticateAndSetContext(v *authress.Validator, opts ...MiddlewareOption) 
 			if !valid {
 				t = &authress.Token{}
 			}
-			ctx := mOpts.contextModifier(r.Context(), t, valid)
-			r = r.WithContext(ctx)
+			r = r.WithContext(mOpts.contextModifier(r.Context(), t, true))
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// RequireAuthWithIntrospection requires a valid JWT by token introspection as defined by [RFC 7662].
+// Inrospection introduces network latency as it requires an HTTP roundtrip. useful for critical endpoints
+// where ensuring that the token has not been revoked is important. In Most cases [RequireAuthJWT] middlware should be preferred
+//
+// Example Usage:
+//
+//	requireAuth := RequireAuthWithIntrospection(introspectionValidator)
+//	http.Handle("/important", requireAuth(http.HandlerFunc(importantHandler)))
+//
+//	http.ListenAndServe(":8080", nil)
+//
+// [RFC 7662]: https://tools.ietf.org/html/rfc7662
+func RequireAuthWithIntrospection(v *authress.Validator, opts ...MiddlewareOption) func(http.Handler) http.Handler {
+	mOpts := &middlewareOptions{
+		tokenExtractor:  BearerTokenExtractor,
+		contextModifier: defaultContextModifier,
+		errorResponder:  defaultErrorResponder,
+	}
+	for _, opt := range opts {
+		opt(mOpts)
+	}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			token := mOpts.tokenExtractor(r)
+			t, parseErr := v.Parse(token)
+			valid, err := v.IntrospectToken(r.Context(), token)
+			if !valid || err != nil || parseErr != nil {
+				mOpts.errorResponder(w, r, err)
+				return
+			}
+			r = r.WithContext(mOpts.contextModifier(r.Context(), t, true))
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// SetAuthCtxWithIntrospection validates the token via introspection (RFC 7662) but DOES NOT ENFORCE authentication.
+// It adds the token and its status to the context for downstream use.
+//
+// Example:
+//
+//	v, err := authress.NewValidator(
+//			authress.WithAuthServerDiscovery(kcDiscoveryUrl),
+//			authress.WithIntrospection(clientID, clientSecret))
+//	if err != nil {
+//		panic(err) // handle error
+//	}
+//	setAuthCtx := SetAuthCtxWithIntrospection(v)
+//	chain := alice.New(setAuthCtx, setContextLDAP, enforceAuth, authorize).Then(http.HandlerFunc(secureHandler))
+//	http.Handle("/endpoint", chain)
+//
+//	http.ListenAndServe(":8080", nil)
+func SetAuthCtxhWithIntrospection(v *authress.Validator, opts ...MiddlewareOption) func(http.Handler) http.Handler {
+	mOpts := &middlewareOptions{
+		tokenExtractor:  BearerTokenExtractor,
+		contextModifier: defaultContextModifier,
+		errorResponder:  defaultErrorResponder,
+	}
+	for _, opt := range opts {
+		opt(mOpts)
+	}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			token := mOpts.tokenExtractor(r)
+			t, parseErr := v.Parse(token)
+			valid, err := v.IntrospectToken(r.Context(), token)
+			if !valid || err != nil || parseErr != nil {
+				t = &authress.Token{}
+			}
+			r = r.WithContext(mOpts.contextModifier(r.Context(), t, true))
 			next.ServeHTTP(w, r)
 		})
 	}
