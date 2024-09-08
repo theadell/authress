@@ -41,7 +41,7 @@ func IntrospectToken(client *http.Client, introspectionURL string, req Introspec
 	}
 
 	// Create the HTTP request
-	httpReq, err := http.NewRequest("POST", introspectionURL, bytes.NewBufferString(form.Encode()))
+	httpReq, err := http.NewRequest(http.MethodPost, introspectionURL, bytes.NewBufferString(form.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create introspection request: %w", err)
 	}

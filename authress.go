@@ -44,10 +44,12 @@ func (v *Validator) IntrospectToken(ctx context.Context, token string) (bool, er
 	}
 
 	req := internal.IntrospectionRequest{
-		Token: token,
+		Token:        token,
+		ClientID:     v.config.clientId,
+		ClientSecret: v.config.clientSecret,
 	}
 
-	resp, err := internal.IntrospectToken(v.config.HTTPClient, "", req)
+	resp, err := internal.IntrospectToken(v.config.HTTPClient, v.config.AuthServerMetadata.IntrospecetEndpoint, req)
 	if err != nil {
 		return false, err
 	}
@@ -70,6 +72,8 @@ type config struct {
 	RolesClaim             string
 	AuthServerMetadata     *OAuth2ServerMetadata
 	keys                   map[string]*rsa.PublicKey
+	clientId               string
+	clientSecret           string
 }
 
 type Option func(*config)
@@ -117,9 +121,11 @@ func WithHTTPClient(client *http.Client) Option {
 }
 
 // WithIntrospection enables token introspection.
-func WithIntrospection() Option {
+func WithIntrospection(clientId, clientSecret string) Option {
 	return func(c *config) {
 		c.EnableIntrospection = true
+		c.clientId = clientId
+		c.clientSecret = clientSecret
 	}
 }
 
