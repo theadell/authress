@@ -1,7 +1,7 @@
 package internal
 
 import (
-	"crypto/rsa"
+	"crypto"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -17,6 +17,7 @@ type JWTHeader struct {
 }
 
 type Token struct {
+	raw    string
 	Header JWTHeader
 	Claims map[string]any
 	Sig    string
@@ -139,6 +140,7 @@ func DecodeJWT(token string) (*Token, error) {
 
 	// Return the Token struct
 	return &Token{
+		raw:    token,
 		Header: header,
 		Claims: claims,
 		Sig:    sig,
@@ -149,7 +151,7 @@ func DecodeJWT(token string) (*Token, error) {
 	}, nil
 }
 
-func ValidateJWT(tokenString string, keys map[string]*rsa.PublicKey, issuer string, validateAud bool, aud []string) (*Token, error) {
+func ValidateJWT(t *Token, key crypto.PublicKey, issuer string, validateAud bool, aud []string) (*Token, error) {
 
 	// JWT Validation Steps (Based on RFC 7519):
 	// 1. Split the JWT into its three components: header, payload, and signature.
@@ -174,43 +176,30 @@ func ValidateJWT(tokenString string, keys map[string]*rsa.PublicKey, issuer stri
 	//    e. `aud` (audience): If the audience claim is required, ensure it matches the expected audience.
 
 	// Step 1: Split the JWT into header, payload, and signature
-	header, payload, signature, err := Split(tokenString)
-	if err != nil {
-		return nil, validationError("parsing", "malformatted token", err.Error())
-	}
+	// if no match then don't waste time ...
 
-	// Step 2: Decode the JWT
-	t, err := DecodeJWT(tokenString)
+	header, payload, signature, err := Split(t.raw)
 	if err != nil {
-		return nil, validationError("decoding", "malformatted token", err.Error())
+		return nil, NewValidationError(ErrTypeParsing, "malformatted token")
 	}
 
 	data := header + "." + payload
 
-	// Step 3: Signature verification
-	if t.Header.Kid != "" {
-		key, ok := keys[t.Header.Kid]
-		if !ok {
-			return nil, validationError("signature", "no matching key found for kid", t.Header.Kid)
-		}
-		if err := VerifyRSASignature(data, signature, t.Header.Alg, key); err != nil {
-			return nil, validationError("signature", "signature verification failed: invalid signature", err.Error())
-		}
-	} else {
-		return nil, validationError("signature", "no matching key found for kid", "`kid` missing on token header")
+	if err := VerifySignature(data, signature, t.Header.Alg, key); err != nil {
+		return nil, NewValidationError(ErrTypeSignature, "invalid signature")
 	}
 
 	// Step 4: Validate claims
 	if t.Iss != issuer {
-		return nil, validationError("claims", "invalid issuer", fmt.Sprintf("expected %s, got %s", issuer, t.Iss))
+		return nil, NewValidationError(ErrTypeClaims, fmt.Sprintf("invalid issuer: expected %s, got %s", issuer, t.Iss))
 	}
 
 	if time.Now().Unix() > t.Exp {
-		return nil, validationError("claims", "token has expired", fmt.Sprintf("exp: %d, now: %d", t.Exp, time.Now().Unix()))
+		return nil, NewValidationError(ErrTypeClaims, fmt.Sprintf("token has expired: exp: %d", t.Exp))
 	}
 
 	if t.Nbf > 0 && time.Now().Unix() < t.Nbf {
-		return nil, validationError("claims", "token is not valid yet (nbf)", fmt.Sprintf("nbf: %d, now: %d", t.Nbf, time.Now().Unix()))
+		return nil, NewValidationError(ErrTypeClaims, fmt.Sprintf("token is not valid yet (nbf): nbf: %d, ", t.Nbf))
 	}
 
 	if validateAud {
@@ -222,29 +211,33 @@ func ValidateJWT(tokenString string, keys map[string]*rsa.PublicKey, issuer stri
 			}
 		}
 		if !validAud {
-			return nil, validationError("claims", "invalid audience", "aud claim did not match expected audience/s")
+			return nil, NewValidationError(ErrTypeClaims, fmt.Sprintf("invalid audience: expected one of %v, got %v", aud, t.Aud))
 		}
 	}
 
 	return t, nil
 }
 
-type JWTValidationError struct {
-	Message string // Descriptive error message
-	Stage   string // Stage where the error occurred (e.g., "parsing", "signature", "claims")
-	Detail  string // Additional details about the error (e.g., missing kid, incorrect signature)
+const (
+	ErrTypeParsing   = "parsing"
+	ErrTypeSignature = "signature"
+	ErrTypeClaims    = "claims"
+)
+
+type ValidationError struct {
+	ErrType string // Type of the error (from defined constants)
+	Reason  string // Reason for the error
 }
 
-// Error implements the error interface.
-func (e *JWTValidationError) Error() string {
-	return fmt.Sprintf("JWT Validation Error at %s stage: %s. Detail: %s", e.Stage, e.Message, e.Detail)
+// Error implements the error interface for ValidationError
+func (e *ValidationError) Error() string {
+	return fmt.Sprintf("[%s] %s", e.ErrType, e.Reason)
 }
 
-// Helper function to create a new JWTValidationError.
-func validationError(stage, message, detail string) *JWTValidationError {
-	return &JWTValidationError{
-		Stage:   stage,
-		Message: message,
-		Detail:  detail,
+// Constructor for ValidationError
+func NewValidationError(errType, reason string) *ValidationError {
+	return &ValidationError{
+		ErrType: errType,
+		Reason:  reason,
 	}
 }
