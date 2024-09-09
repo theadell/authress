@@ -67,18 +67,19 @@ func IntrospectToken(client *http.Client, introspectionURL string, req Introspec
 	if resp.StatusCode != http.StatusOK {
 		// Create a RetrieveError instance to capture details about the error
 		retrieveError := &RetrieveError{
-			Response: resp,
-			Body:     body,
+			Response:  resp,
+			Body:      body,
+			ErrorCode: resp.Status,
 		}
 
 		// Attempt to parse error details from the response
 		content, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		fmt.Println("CONTENT TYPE IS", content)
 		switch content {
 		case "application/x-www-form-urlencoded", "text/plain":
 			// Some endpoints return a query string with error details
 			vals, err := url.ParseQuery(string(body))
 			if err == nil {
-				retrieveError.ErrorCode = vals.Get("error")
 				retrieveError.ErrorDescription = vals.Get("error_description")
 				retrieveError.ErrorURI = vals.Get("error_uri")
 			}
@@ -90,7 +91,6 @@ func IntrospectToken(client *http.Client, introspectionURL string, req Introspec
 				ErrorURI         string `json:"error_uri"`
 			}
 			if err = json.Unmarshal(body, &introspectionErr); err == nil {
-				retrieveError.ErrorCode = introspectionErr.Error
 				retrieveError.ErrorDescription = introspectionErr.ErrorDescription
 				retrieveError.ErrorURI = introspectionErr.ErrorURI
 			}
@@ -130,5 +130,5 @@ func (r *RetrieveError) Error() string {
 		}
 		return s
 	}
-	return fmt.Sprintf("authress: cannot introspect token: %v\nResponse: %s", r.Response.Status, r.Body)
+	return fmt.Sprintf("authress: introspection request failed with error: %v\n", r.Response.Status)
 }
