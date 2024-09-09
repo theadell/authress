@@ -28,7 +28,15 @@ func (v *Validator) Parse(tokenString string) (*Token, error) {
 // ValidateJWT checks if the given JWT is valid by verifying its signature and standard claims.
 // Returns a Token object on success or an error if validation fails.
 func (v *Validator) ValidateJWT(tokenString string) (*Token, error) {
-	t, err := internal.ValidateJWT(tokenString, v.config.keys, v.config.AuthServerMetadata.Issuer, v.config.ValidateAudience, v.config.Audience)
+	token, err := internal.DecodeJWT(tokenString)
+	if err != nil {
+		return nil, fmt.Errorf("malformatted or invalid JWT")
+	}
+	key, err := v.config.set.GetKey(context.TODO(), token.Header.Kid)
+	if err != nil {
+		return nil, fmt.Errorf("invalid token: no key found in JWKS for key id")
+	}
+	t, err := internal.ValidateJWT(token, key, v.config.AuthServerMetadata.Issuer, v.config.ValidateAudience, v.config.Audience)
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +57,7 @@ func (v *Validator) IntrospectToken(ctx context.Context, token string) (bool, er
 		ClientSecret: v.config.clientSecret,
 	}
 
-	resp, err := internal.IntrospectToken(v.config.HTTPClient, v.config.AuthServerMetadata.IntrospecetEndpoint, req)
+	resp, err := internal.IntrospectToken(v.config.HTTPClient, v.config.AuthServerMetadata.IntrospectionEndpoint, req)
 	if err != nil {
 		return false, err
 	}
@@ -74,11 +82,12 @@ type config struct {
 	keys                   map[string]*rsa.PublicKey
 	clientId               string
 	clientSecret           string
+	set                    JWKSStore
 }
 
 type Option func(*config)
 
-func NewValidator(options ...Option) (*Validator, error) {
+func New(options ...Option) (*Validator, error) {
 	validator := &Validator{
 		config: &config{
 			HTTPClient: &http.Client{
@@ -103,10 +112,10 @@ func NewValidator(options ...Option) (*Validator, error) {
 		}
 
 		validator.config.AuthServerMetadata = metadata
-		validator.config.keys = jwks
+		validator.config.set = &inMemoryStore{set: jwks}
 	}
 
-	if validator.config.EnableIntrospection && validator.config.AuthServerMetadata.IntrospecetEndpoint == "" {
+	if validator.config.EnableIntrospection && validator.config.AuthServerMetadata.IntrospectionEndpoint == "" {
 		return nil, errors.New("invalid config: introspection is enabled but the authorization server does not support it")
 	}
 
@@ -145,15 +154,19 @@ func WithRolesValidation(enabled bool, rolesClaim string) Option {
 	}
 }
 
-func WithAuthServerDiscovery(discoveryUrl string) Option {
+func WithDiscovery(discoveryUrl string) Option {
 	return func(c *config) {
 		c.AuthServerDiscoveryURL = discoveryUrl
 	}
 }
 
-func WithStaticAuthServerMetadata(metadata *OAuth2ServerMetadata, keys map[string]*rsa.PublicKey) Option {
+func WithMetadata(metadata *OAuth2ServerMetadata) Option {
 	return func(c *config) {
 		c.AuthServerMetadata = metadata
-		c.keys = keys
+	}
+}
+func WithJWKS(jwks JWKSStore) Option {
+	return func(c *config) {
+		c.set = jwks
 	}
 }

@@ -34,11 +34,12 @@ func TestMain(m *testing.M) {
 func TestNewValidator(t *testing.T) {
 	// Prepare keys and metadata for the tests
 	keys := make(map[string]*rsa.PublicKey)
-	keyID := "some-id"
+	keyID := "0"
 	keys[keyID] = testRSAPublicKey
+
 	validMetadata := &OAuth2ServerMetadata{
-		Issuer:              "my-iss",
-		IntrospecetEndpoint: "https://auth-server.com/introspect",
+		Issuer:                "my-iss",
+		IntrospectionEndpoint: "https://auth-server.com/introspect",
 	}
 
 	// Test cases
@@ -50,13 +51,17 @@ func TestNewValidator(t *testing.T) {
 		{
 			name: "valid with static metadata",
 			options: []Option{
-				WithStaticAuthServerMetadata(validMetadata, keys),
+				WithMetadata(&OAuth2ServerMetadata{}),
+				WithJWKS(newTestStore(testRSAPublicKey)),
 			},
 			expectedErr: false,
 		},
 		{
 			name: "missing both discovery URL and metadata",
 			options: []Option{
+				WithMetadata(&OAuth2ServerMetadata{
+					Issuer: "my-iss",
+				}),
 				WithAudienceValidation("aud"),
 			},
 			expectedErr: true,
@@ -64,16 +69,17 @@ func TestNewValidator(t *testing.T) {
 		{
 			name: "valid with discovery URL",
 			options: []Option{
-				WithAuthServerDiscovery("https://accounts.google.com/.well-known/openid-configuration"),
+				WithDiscovery("https://accounts.google.com/.well-known/openid-configuration"),
 			},
 			expectedErr: false,
 		},
 		{
 			name: "introspection enabled but no endpoint",
 			options: []Option{
-				WithStaticAuthServerMetadata(&OAuth2ServerMetadata{
+				WithMetadata(&OAuth2ServerMetadata{
 					Issuer: "my-iss",
-				}, keys),
+				}),
+				WithJWKS(newTestStore(testRSAPublicKey)),
 				WithIntrospection("", ""),
 			},
 			expectedErr: true,
@@ -81,7 +87,8 @@ func TestNewValidator(t *testing.T) {
 		{
 			name: "valid with custom HTTP client",
 			options: []Option{
-				WithStaticAuthServerMetadata(validMetadata, keys),
+				WithMetadata(validMetadata),
+				WithJWKS(newTestStore(testRSAPublicKey)),
 				WithHTTPClient(&http.Client{}),
 			},
 			expectedErr: false,
@@ -91,7 +98,7 @@ func TestNewValidator(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 
-			validator, err := NewValidator(tt.options...)
+			validator, err := New(tt.options...)
 
 			if tt.expectedErr == false && err != nil {
 				t.Fatalf("expected no error, but got: %v", err)
@@ -107,14 +114,14 @@ func TestNewValidator(t *testing.T) {
 func TestValidateToken(t *testing.T) {
 
 	keys := make(map[string]*rsa.PublicKey)
-	keyID := "some-id"
+	keyID := "0"
 	keys[keyID] = testRSAPublicKey
 	metaData := &OAuth2ServerMetadata{
 		Issuer: "my-iss",
 	}
 
 	// Initialize the TokenValidator
-	v, err := NewValidator(WithStaticAuthServerMetadata(metaData, keys))
+	v, err := New(WithMetadata(metaData), WithJWKS(newTestStore(testRSAPublicKey)))
 	if err != nil {
 		t.Fatalf("failed to create validator: %v", err)
 	}
@@ -232,13 +239,13 @@ func TestValidateToken(t *testing.T) {
 
 func TestValidateTokenWithAudienceValidation(t *testing.T) {
 	keys := make(map[string]*rsa.PublicKey)
-	keyID := "some-id"
+	keyID := "0"
 	keys[keyID] = testRSAPublicKey
 	metaData := &OAuth2ServerMetadata{
 		Issuer: "my-iss",
 	}
 
-	v, err := NewValidator(WithStaticAuthServerMetadata(metaData, keys), WithAudienceValidation("my-app"))
+	v, err := New(WithMetadata(metaData), WithJWKS(newTestStore(testRSAPublicKey)), WithAudienceValidation("my-app"))
 	if err != nil {
 		t.Fatalf("failed to create validator: %v", err)
 	}

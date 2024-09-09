@@ -1,23 +1,31 @@
 package authress
 
 import (
-	"crypto/rsa"
 	"encoding/json"
 	"fmt"
 	"net/http"
 
-	"github.com/theadell/authress/internal"
+	"github.com/MicahParks/jwkset"
 	"golang.org/x/oauth2"
 )
 
 type OAuth2ServerMetadata struct {
-	Issuer                 string   `json:"issuer"`
-	AuthEndpoint           string   `json:"authorization_endpoint"`
-	TokenEndpoint          string   `json:"token_endpoint"`
-	DeviceAuthEndpoint     string   `json:"device_authorization_endpoint"`
-	JWKURI                 string   `json:"jwks_uri"`
-	IntrospecetEndpoint    string   `json:"introspection_endpoint"`
-	IntrospecetAuthMethods []string `json:"introspection_endpoint_auth_methods_supported"`
+	Issuer                            string   `json:"issuer"`
+	AuthEndpoint                      string   `json:"authorization_endpoint"`
+	TokenEndpoint                     string   `json:"token_endpoint"`
+	DeviceAuthEndpoint                string   `json:"device_authorization_endpoint"`
+	JWKURI                            string   `json:"jwks_uri"`
+	IntrospectionEndpoint             string   `json:"introspection_endpoint"`
+	IntrospectionAuthMethodsSupported []string `json:"introspection_endpoint_auth_methods_supported"`
+	RevocationEndpoint                string   `json:"revocation_endpoint"`
+	RevocationAuthMethodsSupported    []string `json:"revocation_endpoint_auth_methods_supported"`
+	ScopesSupported                   []string `json:"scopes_supported"`
+	ResponseTypesSupported            []string `json:"response_types_supported"`
+	GrantTypesSupported               []string `json:"grant_types_supported"`
+	TokenEndpointAuthMethodsSupported []string `json:"token_endpoint_auth_methods_supported"`
+	SubjectTypesSupported             []string `json:"subject_types_supported"`
+	IDTokenSigningAlgsSupported       []string `json:"id_token_signing_alg_values_supported"`
+	CodeChallengeMethodsSupported     []string `json:"code_challenge_methods_supported"`
 }
 
 func (m *OAuth2ServerMetadata) Endpoint() oauth2.Endpoint {
@@ -28,7 +36,7 @@ func (m *OAuth2ServerMetadata) Endpoint() oauth2.Endpoint {
 	}
 }
 
-func discoverOAuth2ServerMetadata(client *http.Client, discoveryUrl string) (*OAuth2ServerMetadata, map[string]*rsa.PublicKey, error) {
+func discoverOAuth2ServerMetadata(client *http.Client, discoveryUrl string) (*OAuth2ServerMetadata, jwkset.Storage, error) {
 	resp, err := client.Get(discoveryUrl)
 	if err != nil {
 		return nil, nil, err
@@ -44,18 +52,9 @@ func discoverOAuth2ServerMetadata(client *http.Client, discoveryUrl string) (*OA
 		return nil, nil, fmt.Errorf("failed to decode server metadata %w", err)
 	}
 
-	jwks, err := internal.FetchJWKS(client, metadata.JWKURI)
+	jwks, err := jwkset.NewDefaultHTTPClient([]string{metadata.JWKURI})
 	if err != nil {
 		return nil, nil, err
 	}
-	keysMap := make(map[string]*rsa.PublicKey)
-
-	for _, key := range jwks.Keys {
-		rsaKey, err := internal.JWKToRSAPublicKey(key)
-		if err != nil {
-			continue
-		}
-		keysMap[key.Kid] = rsaKey
-	}
-	return &metadata, keysMap, nil
+	return &metadata, jwks, nil
 }

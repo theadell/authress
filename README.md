@@ -8,9 +8,6 @@ Authress is a lightweight Go package for OAuth 2.0 / OpenID Connect (OIDC) **res
 - Token Introspection: Supports token introspection for cases where you need to verify token status directly with the authorization server.
 - Middleware: Provides middleware for validating JWTs in HTTP requests.
 
-### TODO:  
-- Token Rotation Support: Handling automatic key rotation from the authorization server.
-- Additional Signing Algorithms: Currently, only RSA is supported.
 
 ### Installation
 ```sh

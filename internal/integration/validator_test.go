@@ -12,7 +12,7 @@ import (
 )
 
 func TestAuthServerDiscovery(t *testing.T) {
-	_, err := authress.NewValidator(authress.WithAuthServerDiscovery(kcDiscoveryUrl))
+	_, err := authress.New(authress.WithDiscovery(kcDiscoveryUrl))
 	if err != nil {
 		t.Errorf("failed to create validator: %v", err)
 	}
@@ -20,8 +20,8 @@ func TestAuthServerDiscovery(t *testing.T) {
 
 func TestTokenIntrospection(t *testing.T) {
 	fmt.Println(clientID, clientSecret)
-	v, err := authress.NewValidator(
-		authress.WithAuthServerDiscovery(kcDiscoveryUrl),
+	v, err := authress.New(
+		authress.WithDiscovery(kcDiscoveryUrl),
 		authress.WithIntrospection(clientID, clientSecret))
 	if err != nil {
 		t.Errorf("failed to create validator: %v", err)
@@ -45,7 +45,7 @@ func TestTokenIntrospection(t *testing.T) {
 
 func TestValidateToken(t *testing.T) {
 	fmt.Println(clientID, clientSecret)
-	v, err := authress.NewValidator(authress.WithAuthServerDiscovery(kcDiscoveryUrl))
+	v, err := authress.New(authress.WithDiscovery(kcDiscoveryUrl))
 	if err != nil {
 		t.Errorf("failed to create validator: %v", err)
 	}

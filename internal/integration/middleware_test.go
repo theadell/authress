@@ -13,7 +13,7 @@ import (
 )
 
 func TestAuthenticateMiddleWare(t *testing.T) {
-	val, err := authress.NewValidator(authress.WithAuthServerDiscovery(kcDiscoveryUrl))
+	val, err := authress.New(authress.WithDiscovery(kcDiscoveryUrl))
 	if err != nil {
 		t.Fatalf("failed to create validator %v", err.Error())
 	}
