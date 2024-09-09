@@ -24,6 +24,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/justinas/alice"        
 	"github.com/theadell/authress"
@@ -32,8 +33,10 @@ import (
 
 func main() {
 
-	validator, err := authress.NewValidator(
-		authress.WithAuthServerDiscovery("https://example.com/.well-known/openid-configuration"),
+	IdpURL := "https://idp.com/.well-known/openid-configuration"
+
+	validator, err := authress.New(
+		authress.WithDiscovery(IdpURL),
 		authress.WithIntrospection("clientID", "clientSecret"))
 	if err != nil {
 		log.Fatalf("Failed to create validator: %v", err)
@@ -49,7 +52,8 @@ func main() {
 
 	// Inject JWT into context without enforcing authentication (delegated to down-stream middleware)
 	setAuthContext := authress.SetAuthContextJWT(validator)
-	chain := alice.New(setAuthCtx, setContextLDAP, enforceAuth, authorize).Then(http.HandlerFunc(secureHandler))
+	chain := alice.New(setAuthCtx, setContextLDAP, enforceAuth, authorize).
+		Then(http.HandlerFunc(secureHandler))
 	http.Handle("/another-route", chain)
 
 	log.Fatal(http.ListenAndServe(":8080", nil))
@@ -123,8 +127,8 @@ import (
 
 func main() {
 	// Create a Validator using OAuth2/OIDC discovery
-	validator, err := authress.NewValidator(
-		authress.WithAuthServerDiscovery("https://idp.com/.well-known/openid-configuration"))
+	validator, err := authress.New(
+		authress.WithAuthServerDiscovery(IdpUrl))
 	if err != nil {
 		log.Fatalf("Failed to create validator: %v", err)
 	}
