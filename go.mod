@@ -1,10 +1,14 @@
 module github.com/theadell/authress
 
-go 1.23.0
+go 1.21
+
+toolchain go1.23.0
 
 require golang.org/x/oauth2 v0.23.0
 
 require (
+	github.com/MicahParks/jwkset v0.5.18
+	github.com/Nerzal/gocloak/v13 v13.9.0
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/testcontainers/testcontainers-go v0.33.0
 )
@@ -13,7 +17,6 @@ require (
 	dario.cat/mergo v1.0.0 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/Nerzal/gocloak/v13 v13.9.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.2.1 // indirect
 	github.com/containerd/containerd v1.7.18 // indirect
 	github.com/containerd/log v0.1.0 // indirect
@@ -58,4 +61,5 @@ require (
 	golang.org/x/crypto v0.22.0 // indirect
 	golang.org/x/net v0.23.0 // indirect
 	golang.org/x/sys v0.21.0 // indirect
+	golang.org/x/time v0.5.0 // indirect
 )
