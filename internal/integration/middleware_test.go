@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/theadell/authress"
-	"github.com/theadell/authress/middleware"
 )
 
 func TestAuthenticateMiddleWare(t *testing.T) {
@@ -18,7 +17,7 @@ func TestAuthenticateMiddleWare(t *testing.T) {
 		t.Fatalf("failed to create validator %v", err.Error())
 	}
 
-	mw := middleware.RequireAuthJWT(val)
+	mw := authress.RequireAuthJWT(val)
 	svr := httptest.NewServer(mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
 	})))

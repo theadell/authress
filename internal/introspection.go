@@ -74,7 +74,6 @@ func IntrospectToken(client *http.Client, introspectionURL string, req Introspec
 
 		// Attempt to parse error details from the response
 		content, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
-		fmt.Println("CONTENT TYPE IS", content)
 		switch content {
 		case "application/x-www-form-urlencoded", "text/plain":
 			// Some endpoints return a query string with error details

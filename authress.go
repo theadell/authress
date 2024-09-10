@@ -61,7 +61,6 @@ func (v *Validator) IntrospectToken(ctx context.Context, token string) (bool, er
 	if err != nil {
 		return false, err
 	}
-
 	return resp.Active, nil
 }
 
@@ -143,14 +142,6 @@ func WithAudienceValidation(audience ...string) Option {
 	return func(c *config) {
 		c.ValidateAudience = true
 		c.Audience = audience
-	}
-}
-
-// WithRolesValidation enables or disables roles validation and sets the claim name for roles.
-func WithRolesValidation(enabled bool, rolesClaim string) Option {
-	return func(c *config) {
-		c.ValidateRoles = enabled
-		c.RolesClaim = rolesClaim
 	}
 }
 

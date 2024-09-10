@@ -1,9 +1,7 @@
-package middleware
+package authress
 
 import (
 	"net/http"
-
-	"github.com/theadell/authress"
 )
 
 // RequireAuthJWT requires that a valid JWT is present in the request.
@@ -37,9 +35,9 @@ import (
 //	    WithErrorResponder(func(w http.ResponseWriter, r *http.Request, err error) {
 //	        http.Error(w, "Custom unauthorized message", http.StatusUnauthorized)
 //	    }))
-func RequireAuthJWT(v *authress.Validator, opts ...MiddlewareOption) func(http.Handler) http.Handler {
+func RequireAuthJWT(v *Validator, opts ...MiddlewareOption) func(http.Handler) http.Handler {
 	mOpts := &middlewareOptions{
-		tokenExtractor:  BearerTokenExtractor,
+		tokenExtractor:  defaultTokenExtractor,
 		contextModifier: defaultContextModifier,
 		errorResponder:  defaultErrorResponder,
 	}
@@ -72,9 +70,9 @@ func RequireAuthJWT(v *authress.Validator, opts ...MiddlewareOption) func(http.H
 //	chain := alice.New(setAuthContextJWT, setAuthContextLDAP, enforceAuth, authorize).Then(http.HandlerFunc(secureHandler))
 //	http.Handle("/secure", chain)
 //	http.ListenAndServe(":8080", nil)
-func SetAuthContextJWT(v *authress.Validator, opts ...MiddlewareOption) func(http.Handler) http.Handler {
+func SetAuthContextJWT(v *Validator, opts ...MiddlewareOption) func(http.Handler) http.Handler {
 	mOpts := &middlewareOptions{
-		tokenExtractor:  BearerTokenExtractor,
+		tokenExtractor:  defaultTokenExtractor,
 		contextModifier: defaultContextModifier,
 	}
 	for _, opt := range opts {
@@ -87,9 +85,9 @@ func SetAuthContextJWT(v *authress.Validator, opts ...MiddlewareOption) func(htt
 			t, err := v.ValidateJWT(token)
 			valid := err == nil
 			if !valid {
-				t = &authress.Token{}
+				t = &Token{}
 			}
-			r = r.WithContext(mOpts.contextModifier(r.Context(), t, true))
+			r = r.WithContext(mOpts.contextModifier(r.Context(), t, valid))
 			next.ServeHTTP(w, r)
 		})
 	}
@@ -107,9 +105,9 @@ func SetAuthContextJWT(v *authress.Validator, opts ...MiddlewareOption) func(htt
 //	http.ListenAndServe(":8080", nil)
 //
 // [RFC 7662]: https://tools.ietf.org/html/rfc7662
-func RequireAuthWithIntrospection(v *authress.Validator, opts ...MiddlewareOption) func(http.Handler) http.Handler {
+func RequireAuthWithIntrospection(v *Validator, opts ...MiddlewareOption) func(http.Handler) http.Handler {
 	mOpts := &middlewareOptions{
-		tokenExtractor:  BearerTokenExtractor,
+		tokenExtractor:  defaultTokenExtractor,
 		contextModifier: defaultContextModifier,
 		errorResponder:  defaultErrorResponder,
 	}
@@ -120,8 +118,12 @@ func RequireAuthWithIntrospection(v *authress.Validator, opts ...MiddlewareOptio
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			token := mOpts.tokenExtractor(r)
 			t, parseErr := v.Parse(token)
+			if parseErr != nil {
+				t = &Token{Raw: token}
+			}
 			valid, err := v.IntrospectToken(r.Context(), token)
-			if !valid || err != nil || parseErr != nil {
+
+			if !valid || err != nil {
 				mOpts.errorResponder(w, r, err)
 				return
 			}
@@ -147,9 +149,9 @@ func RequireAuthWithIntrospection(v *authress.Validator, opts ...MiddlewareOptio
 //	http.Handle("/endpoint", chain)
 //
 //	http.ListenAndServe(":8080", nil)
-func SetAuthCtxhWithIntrospection(v *authress.Validator, opts ...MiddlewareOption) func(http.Handler) http.Handler {
+func SetAuthCtxhWithIntrospection(v *Validator, opts ...MiddlewareOption) func(http.Handler) http.Handler {
 	mOpts := &middlewareOptions{
-		tokenExtractor:  BearerTokenExtractor,
+		tokenExtractor:  defaultTokenExtractor,
 		contextModifier: defaultContextModifier,
 		errorResponder:  defaultErrorResponder,
 	}
@@ -162,9 +164,9 @@ func SetAuthCtxhWithIntrospection(v *authress.Validator, opts ...MiddlewareOptio
 			t, parseErr := v.Parse(token)
 			valid, err := v.IntrospectToken(r.Context(), token)
 			if !valid || err != nil || parseErr != nil {
-				t = &authress.Token{}
+				t = &Token{}
 			}
-			r = r.WithContext(mOpts.contextModifier(r.Context(), t, true))
+			r = r.WithContext(mOpts.contextModifier(r.Context(), t, valid))
 			next.ServeHTTP(w, r)
 		})
 	}

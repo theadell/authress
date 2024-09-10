@@ -1,6 +1,7 @@
 package authress
 
 import (
+	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
@@ -15,17 +16,17 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-var testRSAPrivateKey *rsa.PrivateKey
-var testRSAPublicKey *rsa.PublicKey
+var RSAPrvKey *rsa.PrivateKey
+var RSAPubKey *rsa.PublicKey
 
 func TestMain(m *testing.M) {
 
 	var err error
-	testRSAPrivateKey, err = rsa.GenerateKey(rand.Reader, 2048)
+	RSAPrvKey, err = rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		panic(fmt.Sprintf("failed to generate RSA key pair: %v", err))
 	}
-	testRSAPublicKey = &testRSAPrivateKey.PublicKey
+	RSAPubKey = &RSAPrvKey.PublicKey
 	exitCode := m.Run()
 
 	os.Exit(exitCode)
@@ -35,7 +36,7 @@ func TestNewValidator(t *testing.T) {
 	// Prepare keys and metadata for the tests
 	keys := make(map[string]*rsa.PublicKey)
 	keyID := "0"
-	keys[keyID] = testRSAPublicKey
+	keys[keyID] = RSAPubKey
 
 	validMetadata := &OAuth2ServerMetadata{
 		Issuer:                "my-iss",
@@ -52,7 +53,7 @@ func TestNewValidator(t *testing.T) {
 			name: "valid with static metadata",
 			options: []Option{
 				WithMetadata(&OAuth2ServerMetadata{}),
-				WithJWKS(newTestStore(testRSAPublicKey)),
+				WithJWKS(newTestStore(RSAPubKey)),
 			},
 			expectedErr: false,
 		},
@@ -79,7 +80,7 @@ func TestNewValidator(t *testing.T) {
 				WithMetadata(&OAuth2ServerMetadata{
 					Issuer: "my-iss",
 				}),
-				WithJWKS(newTestStore(testRSAPublicKey)),
+				WithJWKS(newTestStore(RSAPubKey)),
 				WithIntrospection("", ""),
 			},
 			expectedErr: true,
@@ -88,7 +89,7 @@ func TestNewValidator(t *testing.T) {
 			name: "valid with custom HTTP client",
 			options: []Option{
 				WithMetadata(validMetadata),
-				WithJWKS(newTestStore(testRSAPublicKey)),
+				WithJWKS(newTestStore(RSAPubKey)),
 				WithHTTPClient(&http.Client{}),
 			},
 			expectedErr: false,
@@ -115,13 +116,13 @@ func TestValidateToken(t *testing.T) {
 
 	keys := make(map[string]*rsa.PublicKey)
 	keyID := "0"
-	keys[keyID] = testRSAPublicKey
+	keys[keyID] = RSAPubKey
 	metaData := &OAuth2ServerMetadata{
 		Issuer: "my-iss",
 	}
 
 	// Initialize the TokenValidator
-	v, err := New(WithMetadata(metaData), WithJWKS(newTestStore(testRSAPublicKey)))
+	v, err := New(WithMetadata(metaData), WithJWKS(newTestStore(RSAPubKey)))
 	if err != nil {
 		t.Fatalf("failed to create validator: %v", err)
 	}
@@ -147,7 +148,7 @@ func TestValidateToken(t *testing.T) {
 					"custom-claim":  "custom-value",
 					"another-claim": 12345,
 				}
-				return createSignedJWT(claims, testRSAPrivateKey, keyID)
+				return createSignedJWT(claims, RSAPrvKey, keyID)
 			},
 			expectedErr: false,
 		},
@@ -166,7 +167,7 @@ func TestValidateToken(t *testing.T) {
 					"custom-claim":  "custom-value",
 					"another-claim": 12345,
 				}
-				return createTamperedJWT(claims, testRSAPrivateKey, keyID, "aud", "new-aud")
+				return createTamperedJWT(claims, RSAPrvKey, keyID, "aud", "new-aud")
 			},
 			expectedErr: true,
 		},
@@ -193,7 +194,7 @@ func TestValidateToken(t *testing.T) {
 					"custom-claim":  "custom-value",
 					"another-claim": 12345,
 				}
-				return createSignedJWT(claims, testRSAPrivateKey, keyID)
+				return createSignedJWT(claims, RSAPrvKey, keyID)
 			},
 			expectedErr: true,
 		},
@@ -212,7 +213,7 @@ func TestValidateToken(t *testing.T) {
 					"custom-claim":  "custom-value",
 					"another-claim": 12345,
 				}
-				return createSignedJWT(claims, testRSAPrivateKey, keyID)
+				return createSignedJWT(claims, RSAPrvKey, keyID)
 			},
 			expectedErr: true,
 		},
@@ -240,12 +241,12 @@ func TestValidateToken(t *testing.T) {
 func TestValidateTokenWithAudienceValidation(t *testing.T) {
 	keys := make(map[string]*rsa.PublicKey)
 	keyID := "0"
-	keys[keyID] = testRSAPublicKey
+	keys[keyID] = RSAPubKey
 	metaData := &OAuth2ServerMetadata{
 		Issuer: "my-iss",
 	}
 
-	v, err := New(WithMetadata(metaData), WithJWKS(newTestStore(testRSAPublicKey)), WithAudienceValidation("my-app"))
+	v, err := New(WithMetadata(metaData), WithJWKS(newTestStore(RSAPubKey)), WithAudienceValidation("my-app"))
 	if err != nil {
 		t.Fatalf("failed to create validator: %v", err)
 	}
@@ -271,14 +272,14 @@ func TestValidateTokenWithAudienceValidation(t *testing.T) {
 		{
 			Name: "Valid Audience",
 			CreateTokenFunc: func() (string, error) {
-				return createSignedJWT(validAudience, testRSAPrivateKey, keyID)
+				return createSignedJWT(validAudience, RSAPrvKey, keyID)
 			},
 			ExpectErr: false,
 		},
 		{
 			Name: "Invliad Audience",
 			CreateTokenFunc: func() (string, error) {
-				return createSignedJWT(invalidAudience, testRSAPrivateKey, keyID)
+				return createSignedJWT(invalidAudience, RSAPrvKey, keyID)
 			},
 			ExpectErr: true,
 		},
@@ -299,7 +300,7 @@ func TestValidateTokenWithAudienceValidation(t *testing.T) {
 	}
 }
 
-func createSignedJWT(claims jwt.MapClaims, privateKey *rsa.PrivateKey, kid string) (string, error) {
+func createSignedJWT(claims jwt.MapClaims, privateKey crypto.PrivateKey, kid string) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	token.Header["kid"] = kid
 	tokenString, err := token.SignedString(privateKey)
@@ -309,47 +310,39 @@ func createSignedJWT(claims jwt.MapClaims, privateKey *rsa.PrivateKey, kid strin
 	return tokenString, nil
 }
 
-func createTamperedJWT(claims jwt.MapClaims, privateKey *rsa.PrivateKey, kid string, tamperedKey string, tamperedValue any) (string, error) {
-	// Step 1: Create a valid signed JWT
+func createTamperedJWT(claims jwt.MapClaims, privateKey crypto.PrivateKey, kid string, tamperedKey string, tamperedValue any) (string, error) {
+
 	tokenString, err := createSignedJWT(claims, privateKey, kid)
 	if err != nil {
 		return "", err
 	}
 
-	// Step 2: Split the token into its components (header, payload, signature)
 	parts := strings.Split(tokenString, ".")
 	if len(parts) != 3 {
 		return "", fmt.Errorf("invalid JWT format")
 	}
 
-	// Step 3: Base64-decode the payload (the second part)
 	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
 		return "", err
 	}
 
-	// Step 4: Unmarshal the payload into a map
 	var payloadMap map[string]interface{}
 	err = json.Unmarshal(payloadBytes, &payloadMap)
 	if err != nil {
 		return "", err
 	}
 
-	// Step 5: Tamper with the payload (modify or add a claim)
 	payloadMap[tamperedKey] = tamperedValue
 
-	// Step 6: Marshal the tampered payload back to JSON
 	newPayloadBytes, err := json.Marshal(payloadMap)
 	if err != nil {
 		return "", err
 	}
 
-	// Step 7: Base64 URL-encode the tampered payload
 	parts[1] = base64.RawURLEncoding.EncodeToString(newPayloadBytes)
 
-	// Step 8: Reassemble the JWT with the original header and signature, but tampered payload
 	tamperedToken := strings.Join(parts, ".")
 
-	// Return the tampered JWT
 	return tamperedToken, nil
 }

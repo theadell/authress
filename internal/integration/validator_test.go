@@ -5,7 +5,6 @@ package integration
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/theadell/authress"
@@ -19,7 +18,6 @@ func TestAuthServerDiscovery(t *testing.T) {
 }
 
 func TestTokenIntrospection(t *testing.T) {
-	fmt.Println(clientID, clientSecret)
 	v, err := authress.New(
 		authress.WithDiscovery(kcDiscoveryUrl),
 		authress.WithIntrospection(clientID, clientSecret))
@@ -44,7 +42,6 @@ func TestTokenIntrospection(t *testing.T) {
 }
 
 func TestValidateToken(t *testing.T) {
-	fmt.Println(clientID, clientSecret)
 	v, err := authress.New(authress.WithDiscovery(kcDiscoveryUrl))
 	if err != nil {
 		t.Errorf("failed to create validator: %v", err)

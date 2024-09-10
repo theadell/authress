@@ -1,11 +1,9 @@
-package middleware
+package authress
 
 import (
 	"context"
 	"net/http"
 	"strings"
-
-	"github.com/theadell/authress"
 )
 
 type contextKey string
@@ -16,7 +14,7 @@ var AuthContextKey = contextKey("x-authenticated")
 // AuthCtx holds information about the authenticated request.
 type AuthCtx struct {
 	IsAuthenticated bool
-	Token           *authress.Token
+	Token           *Token
 }
 
 func GetAuthCtx(ctx context.Context) (*AuthCtx, bool) {
@@ -28,7 +26,7 @@ func GetAuthCtx(ctx context.Context) (*AuthCtx, bool) {
 type TokenExtractor func(r *http.Request) string
 
 // ContextModifier modifies the request context, adding authentication details if the token is valid.
-type ContextModifier func(ctx context.Context, token *authress.Token, valid bool) context.Context
+type ContextModifier func(ctx context.Context, token *Token, valid bool) context.Context
 
 // ErrorResponder handles the HTTP response when token validation fails (e.g., sending a 401 Unauthorized).
 type ErrorResponder func(w http.ResponseWriter, r *http.Request, err error)
@@ -70,26 +68,35 @@ func WithErrorResponder(responder ErrorResponder) MiddlewareOption {
 }
 
 // BearerTokenExtractor extracts the token from the Authorization header (Bearer token).
-func BearerTokenExtractor(r *http.Request) string {
-	authHeader := r.Header.Get("Authorization")
-	if strings.HasPrefix(authHeader, "Bearer ") {
-		return strings.TrimPrefix(authHeader, "Bearer ")
+func BearerTokenExtractor() TokenExtractor {
+	return func(r *http.Request) string {
+		authHeader := r.Header.Get("Authorization")
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			return strings.TrimPrefix(authHeader, "Bearer ")
+		}
+		return ""
 	}
-	return ""
 }
 
 // CookieTokenExtractor extracts a token from a cookie.
-func CookieTokenExtractor(r *http.Request, cookieName string) string {
-	cookie, err := r.Cookie(cookieName)
-	if err != nil {
-		return ""
+func CookieTokenExtractor(cookieName string) TokenExtractor {
+	return func(r *http.Request) string {
+		cookie, err := r.Cookie(cookieName)
+		if err != nil {
+			return ""
+		}
+		return cookie.Value
 	}
-	return cookie.Value
 }
 
 // CustomHeaderTokenExtractor extracts a token from a custom HTTP header.
-func CustomHeaderTokenExtractor(r *http.Request, headerName string) string {
-	return r.Header.Get(headerName)
+func CustomHeaderTokenExtractor(headerName string) TokenExtractor {
+	return func(r *http.Request) string {
+		return r.Header.Get(headerName)
+	}
+}
+func defaultTokenExtractor(r *http.Request) string {
+	return BearerTokenExtractor()(r)
 }
 
 // defaultErrorResponder sends a 401 Unauthorized response with a message about the invalid token.
@@ -100,7 +107,7 @@ func defaultErrorResponder(w http.ResponseWriter, r *http.Request, err error) {
 }
 
 // defaultContextModifier sets "x-authenticated" to true or false in the request context.
-func defaultContextModifier(ctx context.Context, token *authress.Token, valid bool) context.Context {
+func defaultContextModifier(ctx context.Context, token *Token, valid bool) context.Context {
 	authInfo := &AuthCtx{
 		IsAuthenticated: valid,
 		Token:           token,
