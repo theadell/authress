@@ -1,9 +1,12 @@
 package authress
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"net/url"
 
 	"github.com/MicahParks/jwkset"
 	"golang.org/x/oauth2"
@@ -39,22 +42,34 @@ func (m *OAuth2ServerMetadata) Endpoint() oauth2.Endpoint {
 func discoverOAuth2ServerMetadata(client *http.Client, discoveryUrl string) (*OAuth2ServerMetadata, jwkset.Storage, error) {
 	resp, err := client.Get(discoveryUrl)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("%w: %v", ErrDiscoveryFailure, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, nil, fmt.Errorf("failed to fetch server metadata with status code: %d", resp.StatusCode)
+		return nil, nil, fmt.Errorf("%w: received status code %d", ErrDiscoveryFailure, resp.StatusCode)
 	}
 
 	var metadata OAuth2ServerMetadata
 	if err := json.NewDecoder(resp.Body).Decode(&metadata); err != nil {
-		return nil, nil, fmt.Errorf("failed to decode server metadata %w", err)
+		return nil, nil, fmt.Errorf("%w: failed to unmarshal server metadata: %v", ErrDiscoveryFailure, err)
+	}
+	jwksetUrl, err := url.Parse(metadata.JWKURI)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: received invalid jwks_uri %s", ErrDiscoveryFailure, metadata.JWKURI)
+	}
+	options := jwkset.HTTPClientStorageOptions{
+		Client: client,
+		RefreshErrorHandler: func(ctx context.Context, err error) {
+			slog.Error("failed to fetch HTTP JWK Set from remote HTTP resource.", "error", err.Error())
+		},
+		NoErrorReturnFirstHTTPReq: false,
+		HTTPExpectedStatus:        http.StatusOK,
 	}
 
-	jwks, err := jwkset.NewDefaultHTTPClient([]string{metadata.JWKURI})
+	jwksStorage, err := jwkset.NewStorageFromHTTP(jwksetUrl, options)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("%w: failed to fetch JWKS from %s: %v", ErrDiscoveryFailure, metadata.JWKURI, err)
 	}
-	return &metadata, jwks, nil
+	return &metadata, jwksStorage, nil
 }

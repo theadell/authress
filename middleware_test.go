@@ -429,7 +429,7 @@ func generateTestTokens(t *testing.T) (string, string, string) {
 		"exp": time.Now().Add(1 * time.Hour).Unix(),
 		"sub": "1234",
 	}
-	validToken, err := createSignedJWT(claims, RSAPrvKey, "0")
+	validToken, err := createSignedJWT(claims, RSAPrvKey, rs256, "0")
 	if err != nil {
 		t.Fatalf("createSignedJWT() = %v; but expected no error", err)
 	}
@@ -439,13 +439,13 @@ func generateTestTokens(t *testing.T) (string, string, string) {
 		"aud": "app.authress.com",
 		"exp": time.Now().Add(-1 * time.Hour).Unix(),
 		"sub": "1234",
-	}, RSAPrvKey, "0")
+	}, RSAPrvKey, rs256, "0")
 
 	if err != nil {
 		t.Fatalf("createSignedJWT() = %v; but expected no error", err)
 	}
 
-	tamperedToken, err := createTamperedJWT(claims, RSAPrvKey, "0", "aud", "fake-app")
+	tamperedToken, err := createTamperedJWT(claims, RSAPrvKey, rs256, "0", "aud", "fake-app")
 	if err != nil {
 		t.Fatalf("createTamperedJWT() = %v; but expected no error", err)
 	}

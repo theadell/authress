@@ -148,7 +148,7 @@ func TestValidateToken(t *testing.T) {
 					"custom-claim":  "custom-value",
 					"another-claim": 12345,
 				}
-				return createSignedJWT(claims, RSAPrvKey, keyID)
+				return createSignedJWT(claims, RSAPrvKey, rs256, keyID)
 			},
 			expectedErr: false,
 		},
@@ -167,7 +167,7 @@ func TestValidateToken(t *testing.T) {
 					"custom-claim":  "custom-value",
 					"another-claim": 12345,
 				}
-				return createTamperedJWT(claims, RSAPrvKey, keyID, "aud", "new-aud")
+				return createTamperedJWT(claims, RSAPrvKey, rs256, keyID, "aud", "new-aud")
 			},
 			expectedErr: true,
 		},
@@ -194,7 +194,7 @@ func TestValidateToken(t *testing.T) {
 					"custom-claim":  "custom-value",
 					"another-claim": 12345,
 				}
-				return createSignedJWT(claims, RSAPrvKey, keyID)
+				return createSignedJWT(claims, RSAPrvKey, rs256, keyID)
 			},
 			expectedErr: true,
 		},
@@ -213,7 +213,7 @@ func TestValidateToken(t *testing.T) {
 					"custom-claim":  "custom-value",
 					"another-claim": 12345,
 				}
-				return createSignedJWT(claims, RSAPrvKey, keyID)
+				return createSignedJWT(claims, RSAPrvKey, rs256, keyID)
 			},
 			expectedErr: true,
 		},
@@ -272,14 +272,14 @@ func TestValidateTokenWithAudienceValidation(t *testing.T) {
 		{
 			Name: "Valid Audience",
 			CreateTokenFunc: func() (string, error) {
-				return createSignedJWT(validAudience, RSAPrvKey, keyID)
+				return createSignedJWT(validAudience, RSAPrvKey, rs256, keyID)
 			},
 			ExpectErr: false,
 		},
 		{
 			Name: "Invliad Audience",
 			CreateTokenFunc: func() (string, error) {
-				return createSignedJWT(invalidAudience, RSAPrvKey, keyID)
+				return createSignedJWT(invalidAudience, RSAPrvKey, rs256, keyID)
 			},
 			ExpectErr: true,
 		},
@@ -300,19 +300,9 @@ func TestValidateTokenWithAudienceValidation(t *testing.T) {
 	}
 }
 
-func createSignedJWT(claims jwt.MapClaims, privateKey crypto.PrivateKey, kid string) (string, error) {
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
-	token.Header["kid"] = kid
-	tokenString, err := token.SignedString(privateKey)
-	if err != nil {
-		return "", err
-	}
-	return tokenString, nil
-}
+func createTamperedJWT(claims jwt.MapClaims, privateKey crypto.PrivateKey, alg, kid string, tamperedKey string, tamperedValue any) (string, error) {
 
-func createTamperedJWT(claims jwt.MapClaims, privateKey crypto.PrivateKey, kid string, tamperedKey string, tamperedValue any) (string, error) {
-
-	tokenString, err := createSignedJWT(claims, privateKey, kid)
+	tokenString, err := createSignedJWT(claims, privateKey, alg, kid)
 	if err != nil {
 		return "", err
 	}

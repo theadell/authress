@@ -18,29 +18,29 @@ type Validator struct {
 
 // Parse parses and returns the JWT Token or error if the token is not strucrually valid JWT
 func (v *Validator) Parse(tokenString string) (*Token, error) {
-	t, err := internal.DecodeJWT(tokenString)
+	t, err := parse([]byte(tokenString))
 	if err != nil {
 		return nil, err
 	}
-	return &Token{Raw: tokenString, t: t}, nil
+	return t, nil
 }
 
 // ValidateJWT checks if the given JWT is valid by verifying its signature and standard claims.
 // Returns a Token object on success or an error if validation fails.
 func (v *Validator) ValidateJWT(tokenString string) (*Token, error) {
-	token, err := internal.DecodeJWT(tokenString)
+	token, err := parse([]byte(tokenString))
 	if err != nil {
 		return nil, fmt.Errorf("malformatted or invalid JWT")
 	}
-	key, err := v.config.set.GetKey(context.TODO(), token.Header.Kid)
+	key, err := v.config.set.GetKey(context.TODO(), token.header.Kid)
 	if err != nil {
 		return nil, fmt.Errorf("invalid token: no key found in JWKS for key id")
 	}
-	t, err := internal.ValidateJWT(token, key, v.config.AuthServerMetadata.Issuer, v.config.ValidateAudience, v.config.Audience)
+	t, err := validateJWT(token, key, v.config.AuthServerMetadata.Issuer, v.config.ValidateAudience, v.config.Audience)
 	if err != nil {
 		return nil, err
 	}
-	return &Token{Raw: tokenString, t: t}, nil
+	return t, nil
 }
 
 // IntrospectToken checks if the provided token is active by querying the introspection endpoint according to RFC 7662.

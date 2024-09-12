@@ -119,7 +119,7 @@ func RequireAuthWithIntrospection(v *Validator, opts ...MiddlewareOption) func(h
 			token := mOpts.tokenExtractor(r)
 			t, parseErr := v.Parse(token)
 			if parseErr != nil {
-				t = &Token{Raw: token}
+				t = &Token{}
 			}
 			valid, err := v.IntrospectToken(r.Context(), token)
 

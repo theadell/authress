@@ -57,8 +57,8 @@ func TestValidateToken(t *testing.T) {
 	if err != nil {
 		t.Errorf("did not expect an error but ValidateJWT(token) retruned: %v", err)
 	}
-	if tt.GetStringClaim("preferred_username") != "admin" {
-		t.Errorf("incorrect email claim. Expected %q, but %q", "admin", tt.GetStringClaim("preferred_username"))
+	if tt.Claims.GetStringClaim("preferred_username") != "admin" {
+		t.Errorf("incorrect email claim. Expected %q, but %q", "admin", tt.Claims.GetStringClaim("preferred_username"))
 	}
 
 }
