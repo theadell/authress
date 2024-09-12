@@ -163,4 +163,26 @@ func main() {
 
 ```
 
-#### Use your own keys
+#### Using Your Own Cryptographic Keys
+You can provide custom metadata and keys to the validator instead of relying on OAuth2/OIDC discovery.
+
+**Custom Metadata**
+To use your own OAuth2 server metadata, pass it via WithMetadata:
+```Go
+metadata := &authress.OAuth2ServerMetadata{
+    Issuer: "https://your-issuer.com",
+    // other metadata fields
+}
+validator, _ := authress.New(authress.WithMetadata(metadata))
+```
+**Custom JWKS** 
+```Go
+type MyJWKSStore struct{}
+
+func (s *MyJWKSStore) GetKey(ctx context.Context, kid string) (crypto.PublicKey, error) {
+    // Retrieve key by 'kid'
+    return myKey, nil
+}
+
+validator, _ := authress.New(authress.WithJWKS(&MyJWKSStore{}), authress.WithMetadata(metadata))
+```
