@@ -28,7 +28,6 @@ import (
 
 	"github.com/justinas/alice"        
 	"github.com/theadell/authress"
-	"github.com/theadell/authress/middleware"
 )
 
 func main() {
@@ -44,16 +43,16 @@ func main() {
 
 	// Enforce JWT validation 
 	requireJWT := authress.RequireAuthJWT(validator)
-	http.Handle("/secure", requireJWT(http.HandlerFunc(jwtSecureHandler)))
+	http.Handle("/secure", requireJWT(http.HandlerFunc(handler1)))
 
 	// Enforce introspection validation
 	requireIntrospection := authress.RequireAuthWithIntrospection(validator)
-	http.Handle("/important", requireIntrospection(http.HandlerFunc(introspectSecureHandler)))
+	http.Handle("/important", requireIntrospection(http.HandlerFunc(handler2)))
 
-	// Inject JWT into context without enforcing authentication (delegated to down-stream middleware)
+	// Inject JWT into context without enforcing authentication
 	setAuthContext := authress.SetAuthContextJWT(validator)
 	chain := alice.New(setAuthCtx, setContextLDAP, enforceAuth, authorize).
-		Then(http.HandlerFunc(secureHandler))
+		Then(http.HandlerFunc(handler3))
 	http.Handle("/another-route", chain)
 
 	log.Fatal(http.ListenAndServe(":8080", nil))
@@ -71,11 +70,10 @@ import (
 	"net/http"
 
 	"github.com/theadell/authress"
-	"github.com/theadell/authress/middleware"
 )
 
 // Custom Token Extractor: Extract JWT from a custom header (or cookie, etc.)
-func customTokenExtractor(r *http.Request) string {
+func myTokenExtractor(r *http.Request) string {
 	cookie, err := r.Cookie("token")
 	if err != nil {
 		return "" 
@@ -84,12 +82,12 @@ func customTokenExtractor(r *http.Request) string {
 }
 
 // Custom Context Modifier: Inject custom values into the request context 
-func customContextModifier(ctx context.Context, token *authress.Token) context.Context {
+func myContextModifier(ctx context.Context, token *authress.Token) context.Context {
 	return context.WithValue(ctx, "userRole", token.GetStringClain("role"))
 }
 
 // Custom Error Responder: Customize the error response when validation fails
-func customErrorResponder(w http.ResponseWriter, r *http.Request, err error) {
+func myErrorResponder(w http.ResponseWriter, r *http.Request, err error) {
 	http.Error(w, "Custom Unauthorized: "+err.Error(), http.StatusUnauthorized)
 }
 
@@ -98,14 +96,12 @@ func main() {
 
 	requireJWT := authress.RequireAuthJWT(
 		validator,
-		authress.WithTokenExtractor(customTokenExtractor),       
-		authress.WithContextModifier(customContextModifier),     
-		authress.WithErrorResponder(customErrorResponder),       
+		authress.WithTokenExtractor(myTokenExtractor),       
+		authress.WithContextModifier(myContextModifier),     
+		authress.WithErrorResponder(myErrorResponder),       
 	)
 
-	http.Handle("/secure", requireJWT(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// ...
-	})))
+	http.Handle("/secure", requireJWT(http.HandlerFunc(myHandler))
 
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
@@ -156,11 +152,15 @@ func main() {
 		}
         // do sth with the token 
         role := token.GetStringClaim("role")
-        iss := token.Iss()
-        sub := token.Sub()
+        email := token.Email
+		pic := token.Picture
+		var claim MyCustomClaimType
+		token.GetClaimAs("MyCustomClaimKey", &claim)
 		// ... 
 	})
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
 ```
+
+#### Use your own keys
