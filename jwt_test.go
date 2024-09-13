@@ -397,8 +397,12 @@ func createSignedJWT(claims jwt.MapClaims, privateKey crypto.PrivateKey, alg, ki
 		signingMethod = jwt.SigningMethodES512
 	case edDSA:
 		signingMethod = jwt.SigningMethodEdDSA
-	case "HS256":
+	case hs256:
 		signingMethod = jwt.SigningMethodHS256
+	case hs384:
+		signingMethod = jwt.SigningMethodHS384
+	case hs512:
+		signingMethod = jwt.SigningMethodHS512
 	default:
 		return "", fmt.Errorf("unsupported signing algorithm: %s", alg)
 	}

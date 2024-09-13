@@ -51,9 +51,20 @@ func TestVerifySignature(t *testing.T) {
 		t.Fatalf("failed to generate Ed25519 key: %v", err)
 	}
 
-	// HS256 (HMAC with SHA-256) secret key
-	hs256 := make([]byte, 32)
-	rand.Read(hs256)
+	hs256Key := make([]byte, 32)
+	if _, err := rand.Read(hs256Key); err != nil {
+		t.Fatalf("failed to generate HS256 secret key: %v", err)
+	}
+
+	hs384Key := make([]byte, 48)
+	if _, err := rand.Read(hs384Key); err != nil {
+		t.Fatalf("failed to generate HS384 secret key: %v", err)
+	}
+
+	hs512Key := make([]byte, 64)
+	if _, err := rand.Read(hs512Key); err != nil {
+		t.Fatalf("failed to generate HS512 secret key: %v", err)
+	}
 
 	type testCase struct {
 		name        string
@@ -186,6 +197,110 @@ func TestVerifySignature(t *testing.T) {
 			privateKey:  rsaPrivKey,
 			publicKey:   rsaPubKey,
 			expectedAlg: "InvalidAlg",
+			valid:       false,
+		},
+		// HMAC
+		{
+			name:        "Valid HS256",
+			alg:         "HS256",
+			privateKey:  hs256Key,
+			publicKey:   hs256Key,
+			expectedAlg: "HS256",
+			valid:       true,
+		},
+		{
+			name:        "Valid HS384",
+			alg:         "HS384",
+			privateKey:  hs384Key,
+			publicKey:   hs384Key,
+			expectedAlg: "HS384",
+			valid:       true,
+		},
+		{
+			name:        "Valid HS512",
+			alg:         "HS512",
+			privateKey:  hs512Key,
+			publicKey:   hs512Key,
+			expectedAlg: "HS512",
+			valid:       true,
+		},
+		// Invalid HMAC cases
+		{
+			name:        "Invalid Signature (Modified Signature) HS256",
+			alg:         "HS256",
+			privateKey:  hs256Key,
+			publicKey:   hs256Key,
+			expectedAlg: "HS256",
+			valid:       false,
+			modifySig:   true,
+		},
+		{
+			name:        "Invalid Signature (Modified Data) HS256",
+			alg:         "HS256",
+			privateKey:  hs256Key,
+			publicKey:   hs256Key,
+			expectedAlg: "HS256",
+			valid:       false,
+			modifyData:  true,
+		},
+		{
+			name:        "Invalid Secret Key HS256",
+			alg:         "HS256",
+			privateKey:  hs256Key,
+			publicKey:   make([]byte, 32),
+			expectedAlg: "HS256",
+			valid:       false,
+		},
+		{
+			name:        "Invalid Signature (Modified Signature) HS384",
+			alg:         "HS384",
+			privateKey:  hs384Key,
+			publicKey:   hs384Key,
+			expectedAlg: "HS384",
+			valid:       false,
+			modifySig:   true,
+		},
+		{
+			name:        "Invalid Signature (Modified Data) HS384",
+			alg:         "HS384",
+			privateKey:  hs384Key,
+			publicKey:   hs384Key,
+			expectedAlg: "HS384",
+			valid:       false,
+			modifyData:  true,
+		},
+		{
+			name:        "Invalid Secret Key HS384",
+			alg:         "HS384",
+			privateKey:  hs384Key,
+			publicKey:   make([]byte, 48),
+			expectedAlg: "HS384",
+			valid:       false,
+		},
+		{
+			name:        "Invalid Signature (Modified Signature) HS512",
+			alg:         "HS512",
+			privateKey:  hs512Key,
+			publicKey:   hs512Key,
+			expectedAlg: "HS512",
+			valid:       false,
+			modifySig:   true,
+		},
+		{
+			name:        "Invalid Signature (Modified Data) HS512",
+			alg:         "HS512",
+			privateKey:  hs512Key,
+			publicKey:   hs512Key,
+			expectedAlg: "HS512",
+			valid:       false,
+			modifyData:  true,
+		},
+		{
+			name:        "Invalid Secret Key HS512",
+			alg:         "HS512",
+			privateKey:  hs512Key,
+			publicKey:   make([]byte, 64),
+			expectedAlg: "HS512",
 			valid:       false,
 		},
 	}

@@ -4,6 +4,7 @@ import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/hmac"
 	"crypto/rsa"
 	"math/big"
 )
@@ -20,6 +21,10 @@ const (
 	es256 string = "ES256"
 	es384 string = "ES384"
 	es512 string = "ES512"
+
+	hs256 string = "HS256"
+	hs384 string = "HS384"
+	hs512 string = "HS512"
 )
 
 var verifiers = map[string]signatureVerifier{
@@ -30,6 +35,9 @@ var verifiers = map[string]signatureVerifier{
 	es384: ecdsaVerifier(crypto.SHA384),
 	es512: ecdsaVerifier(crypto.SHA512),
 	edDSA: ed25519Verifier,
+	hs256: hmacVerifier(crypto.SHA256),
+	hs384: hmacVerifier(crypto.SHA384),
+	hs512: hmacVerifier(crypto.SHA512),
 }
 
 func verifySignature(data, signature []byte, alg string, pubKey crypto.PublicKey) error {
@@ -85,6 +93,48 @@ func ed25519Verifier(data, signature []byte, pubKey crypto.PublicKey) error {
 		return ErrInvalidSignature
 	}
 	return nil
+}
+
+func hmacVerifier(hashFunc crypto.Hash) signatureVerifier {
+	return func(data, signature []byte, pubKey crypto.PublicKey) error {
+		secretKey, ok := pubKey.([]byte)
+		if !ok {
+			return ErrInvalidPublicKey
+		}
+
+		/*
+			// Enforce minimum key lenght?
+
+			var minKeyLength int
+			switch hashFunc {
+			case crypto.SHA256:
+				minKeyLength = 32
+			case crypto.SHA384:
+				minKeyLength = 48
+			case crypto.SHA512:
+				minKeyLength = 64
+			default:
+				return errors.New("unsupported hash function")
+			}
+
+			if len(secretKey) < minKeyLength {
+				return fmt.Errorf("HMAC secret key is too short")
+			}
+		*/
+
+		mac := hmac.New(hashFunc.New, secretKey)
+		_, err := mac.Write(data)
+		if err != nil {
+			return err
+		}
+		expectedMAC := mac.Sum(nil)
+
+		if !hmac.Equal(signature, expectedMAC) {
+			return ErrInvalidSignature
+		}
+
+		return nil
+	}
 }
 
 func hash(data []byte, hashFunc crypto.Hash) ([]byte, error) {
