@@ -1,0 +1,16 @@
+{{ define "title" }}Create Blog Post{{ end }}
+
+{{ define "content" }}
+<section class="create-page">
+    <h2 class="create-page__heading">Create a New Blog Post</h2>
+    <form class="create-page__form" action="/create" method="POST">
+        <label for="title" class="create-page__label">Title:</label>
+        <input type="text" id="title" name="title" class="create-page__input" required>
+
+        <label for="content" class="create-page__label">Content:</label>
+        <textarea id="content" name="content" class="create-page__textarea" required></textarea>
+
+        <button type="submit" class="create-page__submit">Submit</button>
+    </form>
+</section>
+{{ end }}

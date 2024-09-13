@@ -1,0 +1,19 @@
+{{ define "layout" }}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ block "title" . }}My Blog{{ end }}</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+        {{ template "navbar" . }}
+
+    <main class="content">
+        {{ block "content" . }}{{ end }}
+    </main>
+</body>
+</html>
+{{ end }}

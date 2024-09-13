@@ -1,0 +1,24 @@
+{{ define "navbar" }}
+<header class="navbar">
+    <div class="navbar__logo">
+        <a href="/">
+            <h1>Blog</h1>
+        </a>
+    </div>
+    <div class="navbar__menu">
+        {{ if .IsAuthenticated }}
+            <p class="navbar__message">User ID: {{ .UserId }}!</p>
+            <form class="navbar__form" action="/create" method="GET">
+                <button type="submit" class="navbar__create-button">Create Post</button>
+            </form>
+            <form class="navbar__form" action="/logout" method="POST">
+                <button type="submit" class="navbar__logout-button">Logout</button>
+            </form>
+        {{ else }}
+            <form class="navbar__form" action="/login" method="GET">
+                <button type="submit" class="navbar__login-button">Login</button>
+            </form>
+        {{ end }}
+    </div>
+</header>
+{{ end }}

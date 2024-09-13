@@ -1,0 +1,10 @@
+{{ define "title" }}Login{{ end }}
+
+{{ define "content" }}
+<section class="login-page">
+    <h2 class="login-page__heading">Login to Your Account</h2>
+    <form class="login-page__form" action="/login" method="POST">
+        <button type="submit" class="login-page__button">Login with Auth0</button>
+    </form>
+</section>
+{{ end }}

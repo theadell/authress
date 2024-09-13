@@ -1,0 +1,8 @@
+{{ define "title" }}{{ .Blog.Title }}{{ end }}
+
+{{ define "content" }}
+<section class="view-page">
+    <h2 class="view-page__heading">{{ .Blog.Title }}</h2>
+    <p class="view-page__content">{{ .Blog.Content }}</p>
+</section>
+{{ end }}

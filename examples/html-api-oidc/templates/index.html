@@ -1,0 +1,22 @@
+{{ define "title" }}Home{{ end }}
+
+{{ define "content" }}
+<section class="index-page">
+    <h2 class="index-page__heading">Welcome to the Blog</h2>
+    <p class="index-page__description">Browse the latest posts.</p>
+    <ul class="index-page__blog-list">
+        {{ range .Blogs }}
+        <a class="no-decoration" href="/blog/{{ .ID }}">
+            <li class="index-page__blog-item">
+                <h3 class="index-page__blog-title">{{ .Title }}</h3>
+                <p class="index-page__blog-excerpt">{{ .Excerpt }}</p>
+                <a class="index-page__blog-link" href="/blog/{{ .ID }}">Read More</a>
+            </li>
+        </a>
+        <p>Lorem ipsum, dolor sit amet consectetur adipisicing elit. Perspiciatis quibusdam, earum assumenda dolorum harum sed dolore architecto vero, quisquam dolorem sit ipsa, hic ut! Labore sit harum ducimus ad nisi.</p>
+        {{ else }}
+        <li class="index-page__blog-empty">No blogs available.</li>
+        {{ end }}
+    </ul>
+</section>
+{{ end }}
