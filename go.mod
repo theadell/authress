@@ -9,7 +9,6 @@ require golang.org/x/oauth2 v0.23.0
 require (
 	github.com/MicahParks/jwkset v0.5.18
 	github.com/Nerzal/gocloak/v13 v13.9.0
-	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/testcontainers/testcontainers-go v0.33.0
 )
 
@@ -32,6 +31,7 @@ require (
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/go-resty/resty/v2 v2.7.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
+	github.com/golang-jwt/jwt/v5 v5.2.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/klauspost/compress v1.17.4 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect

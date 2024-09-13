@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/theadell/authress/internal"
 )
 
@@ -54,9 +53,7 @@ func TestRequireAuthJWT(t *testing.T) {
 	for _, tc := range cases {
 		req, err := http.NewRequest("GET", ts.URL, nil)
 		if err != nil {
-			if err != nil {
-				t.Fatalf("NewRequest() = %v; but expected no error", err)
-			}
+			t.Fatalf("NewRequest() = %v; but expected no error", err)
 		}
 		req.Header.Set("Authorization", "Bearer "+tc.Token)
 		resp, err := client.Do(req)
@@ -139,9 +136,8 @@ func TestRequireAuthJWTWithCustomErrResponder(t *testing.T) {
 	for _, tc := range cases {
 		req, err := http.NewRequest("GET", ts.URL, nil)
 		if err != nil {
-			if err != nil {
-				t.Fatalf("NewRequest() = %v; but expected no error", err)
-			}
+			t.Fatalf("NewRequest() = %v; but expected no error", err)
+
 		}
 		req.Header.Set("Authorization", "Bearer "+tc.Token)
 		resp, err := client.Do(req)
@@ -423,7 +419,7 @@ func TestIntrospectToken(t *testing.T) {
 }
 
 func generateTestTokens(t *testing.T) (string, string, string) {
-	claims := jwt.MapClaims{
+	claims := claimsMap{
 		"iss": "idp.authress.com",
 		"aud": "app.authress.com",
 		"exp": time.Now().Add(1 * time.Hour).Unix(),
@@ -434,7 +430,7 @@ func generateTestTokens(t *testing.T) (string, string, string) {
 		t.Fatalf("createSignedJWT() = %v; but expected no error", err)
 	}
 
-	expiredToken, err := createSignedJWT(jwt.MapClaims{
+	expiredToken, err := createSignedJWT(claimsMap{
 		"iss": "idp.authress.com",
 		"aud": "app.authress.com",
 		"exp": time.Now().Add(-1 * time.Hour).Unix(),

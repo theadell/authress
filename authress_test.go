@@ -1,19 +1,13 @@
 package authress
 
 import (
-	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
-	"strings"
 	"testing"
 	"time"
-
-	"github.com/golang-jwt/jwt/v5"
 )
 
 var RSAPrvKey *rsa.PrivateKey
@@ -136,7 +130,7 @@ func TestValidateToken(t *testing.T) {
 		{
 			name: "valid JWT",
 			tokenFunc: func() (string, error) {
-				claims := jwt.MapClaims{
+				claims := claimsMap{
 					"exp":           time.Now().Add(time.Hour * 24).Unix(),
 					"iat":           time.Now().Unix(),
 					"iss":           "my-iss",
@@ -155,7 +149,7 @@ func TestValidateToken(t *testing.T) {
 		{
 			name: "tampered JWT (audience mismatch)",
 			tokenFunc: func() (string, error) {
-				claims := jwt.MapClaims{
+				claims := claimsMap{
 					"exp":           time.Now().Add(time.Hour * 24).Unix(),
 					"iat":           time.Now().Unix(),
 					"iss":           "my-iss",
@@ -182,7 +176,7 @@ func TestValidateToken(t *testing.T) {
 		{
 			name: "expired JWT",
 			tokenFunc: func() (string, error) {
-				claims := jwt.MapClaims{
+				claims := claimsMap{
 					"exp":           time.Now().Add(-time.Hour * 24).Unix(),
 					"iat":           time.Now().Add(-time.Hour * 48).Unix(),
 					"iss":           "my-iss",
@@ -201,7 +195,7 @@ func TestValidateToken(t *testing.T) {
 		{
 			name: "invalid issuer",
 			tokenFunc: func() (string, error) {
-				claims := jwt.MapClaims{
+				claims := claimsMap{
 					"exp":           time.Now().Add(time.Hour * 24).Unix(),
 					"iat":           time.Now().Unix(),
 					"iss":           "wrong-iss",
@@ -251,13 +245,13 @@ func TestValidateTokenWithAudienceValidation(t *testing.T) {
 		t.Fatalf("failed to create validator: %v", err)
 	}
 
-	validAudience := jwt.MapClaims{
+	validAudience := claimsMap{
 		"exp": time.Now().Add(time.Hour * 24).Unix(),
 		"iat": time.Now().Unix(),
 		"iss": "my-iss",
 		"aud": "my-app",
 	}
-	invalidAudience := jwt.MapClaims{
+	invalidAudience := claimsMap{
 		"exp": time.Now().Add(time.Hour * 24).Unix(),
 		"iat": time.Now().Unix(),
 		"iss": "my-iss",
@@ -298,41 +292,4 @@ func TestValidateTokenWithAudienceValidation(t *testing.T) {
 
 		})
 	}
-}
-
-func createTamperedJWT(claims jwt.MapClaims, privateKey crypto.PrivateKey, alg, kid string, tamperedKey string, tamperedValue any) (string, error) {
-
-	tokenString, err := createSignedJWT(claims, privateKey, alg, kid)
-	if err != nil {
-		return "", err
-	}
-
-	parts := strings.Split(tokenString, ".")
-	if len(parts) != 3 {
-		return "", fmt.Errorf("invalid JWT format")
-	}
-
-	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil {
-		return "", err
-	}
-
-	var payloadMap map[string]interface{}
-	err = json.Unmarshal(payloadBytes, &payloadMap)
-	if err != nil {
-		return "", err
-	}
-
-	payloadMap[tamperedKey] = tamperedValue
-
-	newPayloadBytes, err := json.Marshal(payloadMap)
-	if err != nil {
-		return "", err
-	}
-
-	parts[1] = base64.RawURLEncoding.EncodeToString(newPayloadBytes)
-
-	tamperedToken := strings.Join(parts, ".")
-
-	return tamperedToken, nil
 }

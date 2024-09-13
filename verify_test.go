@@ -2,69 +2,26 @@ package authress
 
 import (
 	"crypto"
-	"crypto/ecdsa"
-	"crypto/ed25519"
 	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/rsa"
 	"encoding/base64"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/golang-jwt/jwt/v5"
 )
 
 func TestVerifySignature(t *testing.T) {
 
-	// RSA key pair
-	rsaPrivKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatalf("failed to generate RSA private key: %v", err)
-	}
-	rsaPubKey := &rsaPrivKey.PublicKey
+	rsaPrivKey, rsaPubKey := generateRsaKeyPair(t, 2048)
 
-	// ECDSA key pair (P-256)
-	ecdsaPrivKey256, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatalf("failed to generate ECDSA P-256 private key: %v", err)
-	}
-	ecdsaPubKey256 := &ecdsaPrivKey256.PublicKey
+	ecdsaPrivKey256, ecdsaPubKey256 := generateECDSAKeyPair(t, elliptic.P256())
+	ecdsaPrivKey384, ecdsaPubKey384 := generateECDSAKeyPair(t, elliptic.P384())
+	ecdsaPrivKey521, ecdsaPubKey521 := generateECDSAKeyPair(t, elliptic.P521())
 
-	// ECDSA key pair (P-384)
-	ecdsaPrivKey384, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
-	if err != nil {
-		t.Fatalf("failed to generate ECDSA P-384 private key: %v", err)
-	}
-	ecdsaPubKey384 := &ecdsaPrivKey384.PublicKey
+	ed25519PrivKey, ed25519PubKey := generateEd25519KeyPair(t)
 
-	// ECDSA key pair (P-521)
-	ecdsaPrivKey521, err := ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
-	if err != nil {
-		t.Fatalf("failed to generate ECDSA P-521 private key: %v", err)
-	}
-	ecdsaPubKey521 := &ecdsaPrivKey521.PublicKey
-
-	// EdDSA (Ed25519) key pair
-	ed25519PubKey, ed25519PrivKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatalf("failed to generate Ed25519 key: %v", err)
-	}
-
-	hs256Key := make([]byte, 32)
-	if _, err := rand.Read(hs256Key); err != nil {
-		t.Fatalf("failed to generate HS256 secret key: %v", err)
-	}
-
-	hs384Key := make([]byte, 48)
-	if _, err := rand.Read(hs384Key); err != nil {
-		t.Fatalf("failed to generate HS384 secret key: %v", err)
-	}
-
-	hs512Key := make([]byte, 64)
-	if _, err := rand.Read(hs512Key); err != nil {
-		t.Fatalf("failed to generate HS512 secret key: %v", err)
-	}
+	hs256Key := generateHMACSecret(t, 32)
+	hs384Key := generateHMACSecret(t, 48)
+	hs512Key := generateHMACSecret(t, 64)
 
 	type testCase struct {
 		name        string
@@ -79,7 +36,6 @@ func TestVerifySignature(t *testing.T) {
 	}
 
 	testCases := []testCase{
-		// RSA algorithm
 		{
 			name:        "Valid RS256",
 			alg:         "RS256",
@@ -104,7 +60,6 @@ func TestVerifySignature(t *testing.T) {
 			expectedAlg: "RS512",
 			valid:       true,
 		},
-		// ECDSA algorithm
 		{
 			name:        "Valid ES256",
 			alg:         "ES256",
@@ -129,7 +84,6 @@ func TestVerifySignature(t *testing.T) {
 			expectedAlg: "ES512",
 			valid:       true,
 		},
-		// EdDSA algorithm
 		{
 			name:        "Valid EdDSA",
 			alg:         "EdDSA",
@@ -138,7 +92,6 @@ func TestVerifySignature(t *testing.T) {
 			expectedAlg: "EdDSA",
 			valid:       true,
 		},
-		// Invalid/Tampered cases
 		{
 			name:        "Invalid Signature (Modified Signature) RS256",
 			alg:         "RS256",
@@ -199,7 +152,6 @@ func TestVerifySignature(t *testing.T) {
 			expectedAlg: "InvalidAlg",
 			valid:       false,
 		},
-		// HMAC
 		{
 			name:        "Valid HS256",
 			alg:         "HS256",
@@ -224,7 +176,6 @@ func TestVerifySignature(t *testing.T) {
 			expectedAlg: "HS512",
 			valid:       true,
 		},
-		// Invalid HMAC cases
 		{
 			name:        "Invalid Signature (Modified Signature) HS256",
 			alg:         "HS256",
@@ -306,15 +257,15 @@ func TestVerifySignature(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			claims := jwt.MapClaims{
+			claims := claimsMap{
 				"sub": "1234567890",
 				"aud": "test-audience",
 				"exp": time.Now().Add(1 * time.Hour).Unix(),
 			}
 
-			createToken := func(tc testCase, claims jwt.MapClaims) (string, error) {
+			createToken := func(tc testCase, claims claimsMap) (string, error) {
 				if tc.tamper {
-					return CreateTamperedJWT(claims, tc.privateKey, tc.alg, "test-key-id", "aud", "fake-aud")
+					return createTamperedJWT(claims, tc.privateKey, tc.alg, "test-key-id", "aud", "fake-aud")
 				}
 				return createSignedJWT(claims, tc.privateKey, tc.alg, "test-key-id")
 			}
@@ -358,5 +309,44 @@ func TestVerifySignature(t *testing.T) {
 				t.Errorf("expected invalid signature but verification succeeded")
 			}
 		})
+	}
+}
+
+func TestDataTampering(t *testing.T) {
+
+	data := []byte("data")
+
+	rsaPrivateKey, rsaPublicKey := generateRsaKeyPair(t, 2048)
+
+	signature, err := signData(data, rs256, rsaPrivateKey)
+	if err != nil {
+		t.Fatalf("Failed to sign data: %v", err)
+	}
+
+	tamperedData := append([]byte{}, data...)
+	tamperedData[0] ^= 0xFF
+
+	err = verifySignature(tamperedData, signature, rs256, rsaPublicKey)
+	if err == nil {
+		t.Fatalf("Verification should have failed for tampered data")
+	}
+}
+
+func TestSignatureTampering(t *testing.T) {
+	data := []byte("Sample data")
+
+	rsaPrivateKey, rsaPublicKey := generateRsaKeyPair(t, 2048)
+
+	signature, err := signData(data, rs256, rsaPrivateKey)
+	if err != nil {
+		t.Fatalf("Failed to sign data: %v", err)
+	}
+
+	tamperedSignature := append([]byte{}, signature...)
+	tamperedSignature[0] ^= 0xFF
+
+	err = verifySignature(data, tamperedSignature, rs256, rsaPublicKey)
+	if err == nil {
+		t.Fatalf("Verification should have failed for tampered signature")
 	}
 }

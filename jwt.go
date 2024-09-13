@@ -108,3 +108,61 @@ func validateJWT(t *Token, key crypto.PublicKey, issuer string, validateAud bool
 func equal(a, b string) bool {
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
+
+/*
+Should we introduce (export) JWT creation and signing into the package?
+This will make it an end to end solution. but will introduce some complexity
+TODO: What will the API look like
+TODO: rewrite of the Token type?
+*/
+type claimsMap map[string]any
+type jwtBuilder struct {
+	alg    string
+	key    crypto.PrivateKey
+	header claimsMap
+	claims claimsMap
+}
+
+func newJWTBuilder(alg string, key crypto.PrivateKey, claims claimsMap) *jwtBuilder {
+	return &jwtBuilder{
+		alg:    alg,
+		key:    key,
+		header: map[string]any{"alg": alg, "typ": "JWT"},
+		claims: claims,
+	}
+}
+func (b *jwtBuilder) setClaim(key string, value interface{}) *jwtBuilder {
+	b.claims[key] = value
+	return b
+}
+
+func (b *jwtBuilder) setHeader(key string, value interface{}) *jwtBuilder {
+	b.header[key] = value
+	return b
+}
+
+func (b *jwtBuilder) signAndBuild() (string, error) {
+
+	headerJSON, err := json.Marshal(b.header)
+	if err != nil {
+		return "", err
+	}
+	headerEncoded := base64.RawURLEncoding.EncodeToString(headerJSON)
+
+	claimsJSON, err := json.Marshal(b.claims)
+	if err != nil {
+		return "", err
+	}
+	claimsEncoded := base64.RawURLEncoding.EncodeToString(claimsJSON)
+
+	signingInput := fmt.Sprintf("%s.%s", headerEncoded, claimsEncoded)
+
+	var signature []byte
+	signature, err = signData([]byte(signingInput), b.alg, b.key)
+	if err != nil {
+		return "", err
+	}
+	signatureEncoded := base64.RawURLEncoding.EncodeToString(signature)
+
+	return fmt.Sprintf("%s.%s", signingInput, signatureEncoded), nil
+}

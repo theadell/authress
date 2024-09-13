@@ -12,16 +12,14 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/golang-jwt/jwt/v5"
 )
 
 func TestValidateJWT(t *testing.T) {
 
-	rsaPrivKey, rsaPubKey := generateRSAPair(t)
+	rsaPrivKey, rsaPubKey := generateRsaKeyPair(t, 2048)
 
 	createJWT := func(issuer string, exp, nbf int64, aud []string) (*Token, string) {
-		claims := jwt.MapClaims{
+		claims := claimsMap{
 			"iss": issuer,
 			"exp": exp,
 			"nbf": nbf,
@@ -136,7 +134,7 @@ func TestValidateJWT(t *testing.T) {
 }
 
 func TestParse(t *testing.T) {
-	claims := jwt.MapClaims{
+	claims := claimsMap{
 		"exp":           time.Now().Add(time.Hour * 24).Unix(),
 		"iat":           time.Now().Unix(),
 		"iss":           "issuer",
@@ -149,7 +147,7 @@ func TestParse(t *testing.T) {
 		"another-claim": 12345,
 	}
 
-	privateKey, _ := generateRSAPair(t)
+	privateKey, _ := generateRsaKeyPair(t, 2048)
 	tokenString, err := createSignedJWT(claims, privateKey, "RS256", "id")
 	if err != nil {
 		t.Fatalf("failed to create signed JWT: %v", err)
@@ -356,7 +354,7 @@ func TestTokenClaims(t *testing.T) {
 	}
 
 	iss, aud, kid := "my-iss", audience{"aud1", "aud2", "aud3"}, "key-id"
-	tt, err := createSignedJWT(jwt.MapClaims{"iss": iss, "aud": aud}, rsaPrivKey, rs256, kid)
+	tt, err := createSignedJWT(claimsMap{"iss": iss, "aud": aud}, rsaPrivKey, rs256, kid)
 
 	token, err := parse([]byte(tt))
 	if err != nil {
@@ -379,46 +377,20 @@ func TestTokenClaims(t *testing.T) {
 
 }
 
-func createSignedJWT(claims jwt.MapClaims, privateKey crypto.PrivateKey, alg, kid string) (string, error) {
-	var signingMethod jwt.SigningMethod
+func createSignedJWT(claims claimsMap, privateKey crypto.PrivateKey, alg, kid string) (string, error) {
 
-	switch alg {
-	case rs256:
-		signingMethod = jwt.SigningMethodRS256
-	case rs384:
-		signingMethod = jwt.SigningMethodRS384
-	case rs512:
-		signingMethod = jwt.SigningMethodRS512
-	case es256:
-		signingMethod = jwt.SigningMethodES256
-	case es384:
-		signingMethod = jwt.SigningMethodES384
-	case es512:
-		signingMethod = jwt.SigningMethodES512
-	case edDSA:
-		signingMethod = jwt.SigningMethodEdDSA
-	case hs256:
-		signingMethod = jwt.SigningMethodHS256
-	case hs384:
-		signingMethod = jwt.SigningMethodHS384
-	case hs512:
-		signingMethod = jwt.SigningMethodHS512
-	default:
-		return "", fmt.Errorf("unsupported signing algorithm: %s", alg)
-	}
+	builder := newJWTBuilder(alg, privateKey, claims)
+	builder.setHeader("kid", kid)
 
-	token := jwt.NewWithClaims(signingMethod, claims)
-
-	token.Header["kid"] = kid
-
-	tokenString, err := token.SignedString(privateKey)
+	tokenString, err := builder.signAndBuild()
 	if err != nil {
 		return "", err
 	}
+
 	return tokenString, nil
 }
 
-func CreateTamperedJWT(claims jwt.MapClaims, privateKey crypto.PrivateKey, alg, kid string, tamperedKey string, tamperedValue any) (string, error) {
+func createTamperedJWT(claims claimsMap, privateKey crypto.PrivateKey, alg, kid string, tamperedKey string, tamperedValue any) (string, error) {
 
 	tokenString, err := createSignedJWT(claims, privateKey, alg, kid)
 	if err != nil {
@@ -453,12 +425,4 @@ func CreateTamperedJWT(claims jwt.MapClaims, privateKey crypto.PrivateKey, alg, 
 	tamperedToken := strings.Join(parts, ".")
 
 	return tamperedToken, nil
-}
-
-func generateRSAPair(t *testing.T) (crypto.PrivateKey, crypto.PublicKey) {
-	rsaPrivKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatalf("failed to generate RSA private key: %v", err)
-	}
-	return rsaPrivKey, &rsaPrivKey.PublicKey
 }
