@@ -1,13 +1,13 @@
 package internal
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"mime"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 type IntrospectionRequest struct {
@@ -40,94 +40,97 @@ func IntrospectToken(client *http.Client, introspectionURL string, req Introspec
 		form.Set("token_type_hint", req.TokenTypeHint)
 	}
 
-	// Create the HTTP request
-	httpReq, err := http.NewRequest(http.MethodPost, introspectionURL, bytes.NewBufferString(form.Encode()))
+	httpReq, err := http.NewRequest(http.MethodPost, introspectionURL, strings.NewReader(form.Encode()))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create introspection request: %w", err)
+		return nil, &RetrievalError{
+			Err:              "failed to create introspection request",
+			ErrorDescription: err.Error(),
+		}
 	}
 
-	// Set content-type and basic auth headers
 	httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	httpReq.SetBasicAuth(req.ClientID, req.ClientSecret)
 
-	// Send the request
 	resp, err := client.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("failed to send introspection request: %w", err)
+		return nil, &RetrievalError{
+			Err:              "failed to send introspection request",
+			ErrorDescription: err.Error(),
+		}
 	}
 	defer resp.Body.Close()
 
-	// Read the response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read introspection response body: %w", err)
+		return nil, &RetrievalError{
+			Err:              "failed to read introspection response body",
+			ErrorDescription: err.Error(),
+		}
 	}
 
-	// Handle non-200 status codes
 	if resp.StatusCode != http.StatusOK {
-		// Create a RetrieveError instance to capture details about the error
-		retrieveError := &RetrieveError{
-			Response:  resp,
-			Body:      body,
-			ErrorCode: resp.Status,
+		retrievalError := &RetrievalError{
+			StatusCode: resp.StatusCode,
 		}
 
-		// Attempt to parse error details from the response
-		content, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
-		switch content {
+		contentType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		switch contentType {
 		case "application/x-www-form-urlencoded", "text/plain":
-			// Some endpoints return a query string with error details
 			vals, err := url.ParseQuery(string(body))
 			if err == nil {
-				retrieveError.ErrorDescription = vals.Get("error_description")
-				retrieveError.ErrorURI = vals.Get("error_uri")
+				retrievalError.Err = vals.Get("error")
+				retrievalError.ErrorDescription = vals.Get("error_description")
 			}
 		default:
-			// Try to parse error details as JSON
-			var introspectionErr struct {
+			var errResp struct {
 				Error            string `json:"error"`
 				ErrorDescription string `json:"error_description"`
-				ErrorURI         string `json:"error_uri"`
 			}
-			if err = json.Unmarshal(body, &introspectionErr); err == nil {
-				retrieveError.ErrorDescription = introspectionErr.ErrorDescription
-				retrieveError.ErrorURI = introspectionErr.ErrorURI
+			if err = json.Unmarshal(body, &errResp); err == nil {
+				retrievalError.Err = errResp.Error
+				retrievalError.ErrorDescription = errResp.ErrorDescription
 			}
 		}
 
-		return nil, retrieveError
+		if retrievalError.Err == "" {
+			retrievalError.Err = "introspection request failed"
+		}
+
+		return nil, retrievalError
 	}
 
 	// Decode successful response into IntrospectionResponse struct
 	var introspectionResponse IntrospectionResponse
-	err = json.NewDecoder(bytes.NewReader(body)).Decode(&introspectionResponse)
+	err = json.Unmarshal(body, &introspectionResponse)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode introspection response: %w", err)
+		return nil, &RetrievalError{
+			Err:              "failed to decode introspection response",
+			ErrorDescription: err.Error(),
+		}
 	}
 
 	// Return the successful introspection response
 	return &introspectionResponse, nil
 }
 
-type RetrieveError struct {
-	Response         *http.Response
-	Body             []byte
-	ErrorCode        string
+type RetrievalError struct {
+	Err              string
 	ErrorDescription string
-	ErrorURI         string
+	StatusCode       int
 }
 
-// Error implements the error interface for RetrieveError.
-func (r *RetrieveError) Error() string {
-	if r.ErrorCode != "" {
-		s := fmt.Sprintf("authress: %q", r.ErrorCode)
-		if r.ErrorDescription != "" {
-			s += fmt.Sprintf(" %q", r.ErrorDescription)
-		}
-		if r.ErrorURI != "" {
-			s += fmt.Sprintf(" %q", r.ErrorURI)
-		}
-		return s
+func (e *RetrievalError) Error() string {
+	var sb strings.Builder
+	if e.Err != "" {
+		sb.WriteString(e.Err)
+	} else {
+		sb.WriteString("retrieval error")
 	}
-	return fmt.Sprintf("authress: introspection request failed with error: %v\n", r.Response.Status)
+	if e.StatusCode != 0 {
+		sb.WriteString(fmt.Sprintf(" (HTTP status %d)", e.StatusCode))
+	}
+	if e.ErrorDescription != "" {
+		sb.WriteString(fmt.Sprintf(": %s", e.ErrorDescription))
+	}
+	return sb.String()
 }

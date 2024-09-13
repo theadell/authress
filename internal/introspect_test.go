@@ -1,9 +1,12 @@
 package internal
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -116,7 +119,7 @@ func TestIntrospectTokenError(t *testing.T) {
 				t.Errorf("expected an error, got nil")
 			}
 
-			if retrieveErr, ok := err.(*RetrieveError); ok {
+			if retrieveErr, ok := err.(*RetrievalError); ok {
 				if retrieveErr.ErrorDescription != tt.expectedDescription {
 					t.Errorf("ErrorDescription = %q; want %q", retrieveErr.ErrorDescription, tt.expectedDescription)
 				}
@@ -125,4 +128,170 @@ func TestIntrospectTokenError(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIntrospectToken_Errors(t *testing.T) {
+	t.Run("Fail to create NewRequest", func(t *testing.T) {
+		client := &http.Client{}
+		introspectionURL := "http://%41:8080/" // Invalid URL to cause NewRequest to fail
+		req := IntrospectionRequest{
+			Token: "test_token",
+		}
+
+		_, err := IntrospectToken(client, introspectionURL, req)
+		if err == nil {
+			t.Fatalf("Expected error when creating request with invalid URL, got nil")
+		}
+		var retrievalErr *RetrievalError
+		if !errors.As(err, &retrievalErr) {
+			t.Errorf("Expected RetrievalError, got %T", err)
+		}
+		expectedError := "failed to create introspection request: parse \"http://%41:8080/\": invalid URL escape \"%41\""
+		if retrievalErr.Error() != expectedError {
+			t.Errorf("Expected error '%s', got '%s'", expectedError, retrievalErr.Error())
+		}
+	})
+
+	t.Run("Client.Do fails", func(t *testing.T) {
+		client := &http.Client{
+			Transport: &FailingRoundTripper{},
+		}
+		introspectionURL := "http://example.com/introspect"
+		req := IntrospectionRequest{
+			Token: "test_token",
+		}
+
+		_, err := IntrospectToken(client, introspectionURL, req)
+		if err == nil {
+			t.Fatalf("Expected error when client.Do fails, got nil")
+		}
+		var retrievalErr *RetrievalError
+		if !errors.As(err, &retrievalErr) {
+			t.Errorf("Expected RetrievalError, got %T", err)
+		}
+		expectedError := `failed to send introspection request: Post "http://example.com/introspect": simulated client.Do failure`
+		if retrievalErr.Error() != expectedError {
+			t.Errorf("Expected error '%s', got '%s'", expectedError, retrievalErr.Error())
+		}
+	})
+
+	t.Run("Body read fails", func(t *testing.T) {
+		client := &http.Client{
+			Transport: &BodyFailingRoundTripper{},
+		}
+		introspectionURL := "http://example.com/introspect"
+		req := IntrospectionRequest{
+			Token: "test_token",
+		}
+
+		_, err := IntrospectToken(client, introspectionURL, req)
+		if err == nil {
+			t.Fatalf("Expected error when reading response body fails, got nil")
+		}
+		var retrievalErr *RetrievalError
+		if !errors.As(err, &retrievalErr) {
+			t.Errorf("Expected RetrievalError, got %T", err)
+		}
+		expectedError := "failed to read introspection response body: simulated body read failure"
+		if retrievalErr.Error() != expectedError {
+			t.Errorf("Expected error '%s', got '%s'", expectedError, retrievalErr.Error())
+		}
+	})
+
+	t.Run("Non-200 Status Code with Error Details", func(t *testing.T) {
+		client := &http.Client{
+			Transport: &ErrorResponseRoundTripper{
+				StatusCode:  http.StatusBadRequest,
+				Body:        `{"error":"invalid_request","error_description":"The request is missing a required parameter."}`,
+				ContentType: "application/json",
+			},
+		}
+		introspectionURL := "http://example.com/introspect"
+		req := IntrospectionRequest{
+			Token: "test_token",
+		}
+
+		_, err := IntrospectToken(client, introspectionURL, req)
+		if err == nil {
+			t.Fatalf("Expected error for non-200 status code, got nil")
+		}
+		var retrievalErr *RetrievalError
+		if !errors.As(err, &retrievalErr) {
+			t.Errorf("Expected RetrievalError, got %T", err)
+		}
+		expectedError := "invalid_request (HTTP status 400): The request is missing a required parameter."
+		if retrievalErr.Error() != expectedError {
+			t.Errorf("Expected error '%s', got '%s'", expectedError, retrievalErr.Error())
+		}
+	})
+
+	t.Run("Non-200 Status Code without Error Details", func(t *testing.T) {
+		client := &http.Client{
+			Transport: &ErrorResponseRoundTripper{
+				StatusCode:  http.StatusInternalServerError,
+				Body:        "Internal Server Error",
+				ContentType: "text/plain",
+			},
+		}
+		introspectionURL := "http://example.com/introspect"
+		req := IntrospectionRequest{
+			Token: "test_token",
+		}
+
+		_, err := IntrospectToken(client, introspectionURL, req)
+		if err == nil {
+			t.Fatalf("Expected error for non-200 status code, got nil")
+		}
+		var retrievalErr *RetrievalError
+		if !errors.As(err, &retrievalErr) {
+			t.Errorf("Expected RetrievalError, got %T", err)
+		}
+		expectedError := "introspection request failed (HTTP status 500)"
+		if retrievalErr.Error() != expectedError {
+			t.Errorf("Expected error '%s', got '%s'", expectedError, retrievalErr.Error())
+		}
+	})
+}
+
+type FailingRoundTripper struct{}
+
+func (f *FailingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	return nil, fmt.Errorf("simulated client.Do failure")
+}
+
+type BodyFailingRoundTripper struct{}
+
+func (b *BodyFailingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       &FailingReadCloser{},
+		Header:     make(http.Header),
+	}, nil
+}
+
+type FailingReadCloser struct{}
+
+func (f *FailingReadCloser) Read(p []byte) (n int, err error) {
+	return 0, fmt.Errorf("simulated body read failure")
+}
+
+func (f *FailingReadCloser) Close() error {
+	return nil
+}
+
+type ErrorResponseRoundTripper struct {
+	StatusCode  int
+	Body        string
+	ContentType string
+}
+
+func (e *ErrorResponseRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: e.StatusCode,
+		Status:     http.StatusText(e.StatusCode),
+		Body:       io.NopCloser(strings.NewReader(e.Body)),
+		Header: http.Header{
+			"Content-Type": []string{e.ContentType},
+		},
+	}, nil
 }
