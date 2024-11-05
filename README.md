@@ -11,7 +11,7 @@ Authress is a lightweight Go package for OAuth 2.0 / OpenID Connect (OIDC) **res
 
 ### Installation
 ```sh
-go get https://github.com/theadell/authress
+go get github.com/theadell/authress
 ```
 
 ### Examples
